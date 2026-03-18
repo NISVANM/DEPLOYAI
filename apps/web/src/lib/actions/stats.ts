@@ -4,13 +4,7 @@ import { createClient } from '@/lib/supabase-server'
 import { jobs, candidates, companies } from '@/lib/db/schema'
 import { unstable_noStore } from 'next/cache'
 import { count, eq, and } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { Pool } from 'pg'
-
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL!,
-})
-const db = drizzle(pool)
+import { db } from '@/lib/db/drizzle-client'
 
 const emptyStats = { jobsCount: 0, candidatesCount: 0, screenedCount: 0, interviewCount: 0 }
 

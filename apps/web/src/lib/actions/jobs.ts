@@ -6,15 +6,7 @@ import { jobSchema } from '@/lib/schemas/jobs'
 import { revalidatePath, unstable_noStore } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { eq, and } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { Pool } from 'pg'
-
-// Initialize Drizzle (Note: In a real app we'd have a singleton db connection)
-// process.env.DATABASE_URL is required
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL!,
-})
-const db = drizzle(pool)
+import { db } from '@/lib/db/drizzle-client'
 
 export async function createJob(formData: any) {
     const supabase = await createClient()
@@ -69,9 +61,10 @@ export async function createJob(formData: any) {
         }
         console.error('createJob error:', e)
         const message = e instanceof Error ? e.message : 'Database error'
-        const hint = process.env.NODE_ENV === 'development'
-            ? message
-            : 'Database error. Make sure migrations are run (e.g. npx drizzle-kit push).'
+        const hint =
+            process.env.NODE_ENV === 'development'
+                ? message
+                : 'Database error. On Vercel: set DATABASE_URL (Supabase → Settings → Database) and run supabase/schema.sql (+ rls.sql) in the Supabase SQL Editor for this project.'
         return { error: { formErrors: [hint] } }
     }
 }

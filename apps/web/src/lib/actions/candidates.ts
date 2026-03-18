@@ -4,8 +4,7 @@ import { createClient } from '@/lib/supabase-server'
 import { candidates, jobs, companies } from '@/lib/db/schema'
 import { revalidatePath, unstable_noStore } from 'next/cache'
 import { eq, and, desc } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { Pool } from 'pg'
+import { db } from '@/lib/db/drizzle-client'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import mammoth from 'mammoth'
 
@@ -16,11 +15,6 @@ function getBaseUrl(): string {
     if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
     return 'http://localhost:3000'
 }
-
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL!,
-})
-const db = drizzle(pool)
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')

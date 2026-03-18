@@ -3,14 +3,8 @@
 import { createClient } from '@/lib/supabase-server'
 import { companies } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { Pool } from 'pg'
 import { revalidatePath, unstable_noStore } from 'next/cache'
-
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL!,
-})
-const db = drizzle(pool)
+import { db } from '@/lib/db/drizzle-client'
 
 export async function getCompany() {
     unstable_noStore()

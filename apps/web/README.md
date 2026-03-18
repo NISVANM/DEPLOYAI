@@ -77,6 +77,29 @@ Smart Candidate Screening & Ranking System.
 3. Copy **Publishable key** -> `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 4. Copy **Secret key** -> `STRIPE_SECRET_KEY`
 
-## Deployment
+## Deployment (Vercel)
 
-Deploy to Vercel. Ensure all environment variables are set.
+This repo is a **monorepo**: the Next.js app lives in **`apps/web`**, not the repository root.
+
+If Vercel’s **Root Directory** is left as `.` (repo root), the build never runs `next build` correctly and you get **`404: NOT_FOUND`** on the live URL.
+
+1. Vercel → your project → **Settings** → **General**.
+2. Under **Root Directory**, click **Edit** → set to **`apps/web`** → Save.
+3. **Redeploy** (Deployments → ⋮ on latest → Redeploy).
+
+Framework should stay **Next.js**. Copy env vars from `.env.example` into Vercel → **Settings** → **Environment Variables**.
+
+### Jobs / “Database error” on production
+
+Posting jobs uses **Postgres** via **`DATABASE_URL`** (not only Supabase Auth). You must:
+
+1. **Create tables** in the **same** Supabase project as your auth keys: open **Supabase** → **SQL Editor**, run the scripts in order:
+   - `apps/web/supabase/schema.sql`
+   - `apps/web/supabase/rls.sql`  
+   (If tables already exist, you may see harmless “already exists” errors—check that `jobs`, `companies`, etc. appear under **Table Editor**.)
+
+2. **Set `DATABASE_URL` on Vercel** to that project’s connection string: **Supabase** → **Project Settings** → **Database** → **URI**. For serverless, prefer the **Transaction pooler** (port **6543**) string; ensure the password is correct (URL-encode special characters like `@` → `%40`).
+
+3. **Redeploy** after adding or changing `DATABASE_URL`.
+
+4. **Transaction pooler (port 6543)** on Vercel: the app uses **`postgres.js` with `prepare: false`** so queries work with PgBouncer. If you still see DB errors, confirm `DATABASE_URL` has no extra quotes/spaces and matches the same Supabase project as auth.
