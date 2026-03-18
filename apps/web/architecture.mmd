@@ -1,0 +1,43 @@
+graph TD
+    subgraph "Authentication & Initial Setup"
+        User((User/User)) -->|Sign Up / Login| Auth[Supabase Auth]
+        Auth -->|Token| Dashboard[Dashboard]
+        Dashboard -->|Create Company Profile| DB_Profiles[(DB Table: Profiles)]
+    end
+
+    subgraph "Company & Job Management"
+        Dashboard -->|Create Job| JobForm[Job Form]
+        JobForm -->|Submit Job| DB_Jobs[(DB Table: Jobs)]
+        DB_Jobs -->|Fetch Jobs| JobList[Job List View]
+    end
+
+    subgraph "Candidate Application / Resume Upload"
+        Recruiter((Recruiter)) -->|Drag & Drop Resume| UploadComp[Upload Component]
+        UploadComp -->|Upload File| Storage[Supabase Storage bucket: resumes]
+        Storage -->|File Path| ServerAction[Next.js Server Action]
+        ServerAction -->|Read PDF/DOCX| Parser[Text Parser (Mammoth/PDF.js)]
+    end
+
+    subgraph "AI Screening & Ranking"
+        Parser -->|Extracted Text| OpenAI[OpenAI GPT-4o]
+        DB_Jobs -->|Job Requirements & Skills| OpenAI
+        OpenAI -->|Parsing & Scoring| JSON_Result{JSON Analysis}
+        
+        JSON_Result -->|"Score (0-100)"| DB_Candidates[(DB Table: Candidates)]
+        JSON_Result -->|Summary & Skills| DB_Candidates
+        JSON_Result -->|Match Analysis| DB_Candidates
+    end
+
+    subgraph "Review & Action"
+        Recruiter -->|View Candidates| CandidateList[Candidates List]
+        DB_Candidates -->|Sorted Data| CandidateList
+        CandidateList -->|View Details| CandidateDetail[Candidate Profile]
+        CandidateDetail -->|Move to Interview / Reject| DB_Candidates
+        DB_Candidates -->|Update Status| DB_Candidates
+    end
+
+    style User fill:#f9f,stroke:#333,stroke-width:2px
+    style Recruiter fill:#ccf,stroke:#333,stroke-width:2px
+    style OpenAI fill:#bfb,stroke:#333,stroke-width:4px
+    style DB_Jobs fill:#eee,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+    style DB_Candidates fill:#eee,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
