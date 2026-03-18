@@ -5,8 +5,17 @@
 import postgres from 'postgres'
 import { drizzle } from 'drizzle-orm/postgres-js'
 
+function normalizeDatabaseUrl(raw: string | undefined): string {
+    let url = raw?.trim() ?? ''
+    // Vercel users often paste `"postgresql://..."` — quotes break the connection
+    if ((url.startsWith('"') && url.endsWith('"')) || (url.startsWith("'") && url.endsWith("'"))) {
+        url = url.slice(1, -1).trim()
+    }
+    return url
+}
+
 function createSql() {
-    const url = process.env.DATABASE_URL?.trim()
+    const url = normalizeDatabaseUrl(process.env.DATABASE_URL)
     if (!url) {
         throw new Error('DATABASE_URL is not set')
     }

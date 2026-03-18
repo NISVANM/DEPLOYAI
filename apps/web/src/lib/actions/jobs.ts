@@ -7,6 +7,7 @@ import { revalidatePath, unstable_noStore } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { eq, and } from 'drizzle-orm'
 import { db } from '@/lib/db/drizzle-client'
+import { databaseErrorHint } from '@/lib/db/error-hint'
 
 export async function createJob(formData: any) {
     const supabase = await createClient()
@@ -60,12 +61,7 @@ export async function createJob(formData: any) {
             throw e
         }
         console.error('createJob error:', e)
-        const message = e instanceof Error ? e.message : 'Database error'
-        const hint =
-            process.env.NODE_ENV === 'development'
-                ? message
-                : 'Database error. On Vercel: set DATABASE_URL (Supabase → Settings → Database) and run supabase/schema.sql (+ rls.sql) in the Supabase SQL Editor for this project.'
-        return { error: { formErrors: [hint] } }
+        return { error: { formErrors: [databaseErrorHint(e)] } }
     }
 }
 

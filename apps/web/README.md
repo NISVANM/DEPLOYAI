@@ -102,4 +102,6 @@ Posting jobs uses **Postgres** via **`DATABASE_URL`** (not only Supabase Auth). 
 
 3. **Redeploy** after adding or changing `DATABASE_URL`.
 
-4. **Transaction pooler (port 6543)** on Vercel: the app uses **`postgres.js` with `prepare: false`** so queries work with PgBouncer. If you still see DB errors, confirm `DATABASE_URL` has no extra quotes/spaces and matches the same Supabase project as auth.
+4. **Transaction pooler (port 6543)** on Vercel: prefer Supabase **Connection pooling** → **Transaction** URI (not direct `db.*.supabase.co:5432` if you see timeouts). The app uses **`postgres.js`** with **`prepare: false`** for the pooler.
+
+5. **Vercel `DATABASE_URL`**: paste the URI **without** surrounding `"` quotes. If the toast still mentions **“drizzle-kit push”**, that deployment is **old** — open Vercel → **Deployments**, confirm the latest commit is **Ready**, then hard-refresh the site.
