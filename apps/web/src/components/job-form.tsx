@@ -27,6 +27,14 @@ import { JOB_TITLES_LIST, ALL_SKILLS_LIST, getSkillsForJobTitle } from '@/lib/da
 const TITLE_DATALIST_ID = 'job-title-datalist'
 const SKILLS_DATALIST_ID = 'job-skills-datalist'
 
+/** Server actions that call `redirect()` throw this; it is success, not failure. */
+function isNextRedirectError(error: unknown): boolean {
+    if (error instanceof Error && error.message === 'NEXT_REDIRECT') return true
+    if (typeof error !== 'object' || error === null) return false
+    const digest = 'digest' in error ? String((error as { digest?: unknown }).digest) : ''
+    return digest.startsWith('NEXT_REDIRECT')
+}
+
 function parseSkillsString(s: string): string[] {
     if (typeof s !== 'string') return []
     return s.split(',').map((x) => x.trim()).filter(Boolean)
@@ -83,7 +91,12 @@ export function JobForm() {
             }
             toast.success('Job created successfully')
         } catch (error) {
-            toast.error('Failed to create job')
+            if (isNextRedirectError(error)) {
+                toast.success('Job created successfully')
+                return
+            }
+            const message = error instanceof Error ? error.message : 'Failed to create job'
+            toast.error(message)
             console.error(error)
         } finally {
             setIsPending(false)

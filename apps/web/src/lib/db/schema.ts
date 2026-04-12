@@ -1,8 +1,9 @@
 import { pgTable, serial, text, timestamp, uuid, jsonb, boolean, integer, real, primaryKey, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
-export const candidateStatusEnum = pgEnum('candidate_status', ['new', 'screening', 'interviewed', 'offered', 'rejected']);
+export const candidateStatusEnum = pgEnum('candidate_status', ['new', 'screening', 'interviewed', 'offered', 'hired', 'rejected']);
 export const roleEnum = pgEnum('role', ['owner', 'admin', 'member']);
+export const integrationProviderEnum = pgEnum('integration_provider', ['generic_webhook', 'smtp', 'scheduling']);
 
 export const companies = pgTable('companies', {
     id: uuid('id').defaultRandom().primaryKey(),
@@ -52,6 +53,83 @@ export const candidates = pgTable('candidates', {
     status: candidateStatusEnum('status').default('new').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const integrationConfigs = pgTable('integration_configs', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    companyId: uuid('company_id').references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+    provider: integrationProviderEnum('provider').notNull(),
+    enabled: boolean('enabled').default(false).notNull(),
+    config: jsonb('config').default({}).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const webhookEvents = pgTable('webhook_events', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    companyId: uuid('company_id').references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+    candidateId: uuid('candidate_id').references(() => candidates.id, { onDelete: 'cascade' }).notNull(),
+    jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'cascade' }).notNull(),
+    eventType: text('event_type').notNull(),
+    payload: jsonb('payload').notNull(),
+    status: text('status').default('pending').notNull(),
+    attempts: integer('attempts').default(0).notNull(),
+    nextRetryAt: timestamp('next_retry_at'),
+    lastError: text('last_error'),
+    deliveredAt: timestamp('delivered_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const emailTemplates = pgTable('email_templates', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    companyId: uuid('company_id').references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+    key: text('key').notNull(),
+    subject: text('subject').notNull(),
+    bodyHtml: text('body_html').notNull(),
+    enabled: boolean('enabled').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const emailEvents = pgTable('email_events', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    companyId: uuid('company_id').references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+    candidateId: uuid('candidate_id').references(() => candidates.id, { onDelete: 'cascade' }).notNull(),
+    jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'cascade' }).notNull(),
+    templateKey: text('template_key').notNull(),
+    recipientEmail: text('recipient_email').notNull(),
+    subject: text('subject').notNull(),
+    bodyHtml: text('body_html').notNull(),
+    status: text('status').default('pending').notNull(),
+    attempts: integer('attempts').default(0).notNull(),
+    nextRetryAt: timestamp('next_retry_at'),
+    providerMessageId: text('provider_message_id'),
+    lastError: text('last_error'),
+    sentAt: timestamp('sent_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const schedulingProviderConfigs = pgTable('scheduling_provider_configs', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    companyId: uuid('company_id').references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+    provider: text('provider').default('none').notNull(),
+    enabled: boolean('enabled').default(false).notNull(),
+    config: jsonb('config').default({}).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const schedulingTokens = pgTable('scheduling_tokens', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    companyId: uuid('company_id').references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+    candidateId: uuid('candidate_id').references(() => candidates.id, { onDelete: 'cascade' }).notNull(),
+    jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'cascade' }).notNull(),
+    token: text('token').notNull().unique(),
+    expiresAt: timestamp('expires_at').notNull(),
+    usedAt: timestamp('used_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+})
 
 // Relations
 export const companiesRelations = relations(companies, ({ many }) => ({

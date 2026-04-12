@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { MoreHorizontal, FileText } from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import { updateCandidateStatus } from '@/lib/actions/candidates'
 import { toast } from 'sonner'
+import type { CandidateStatus } from '@/lib/integrations/types'
 
 interface Candidate {
     id: string
@@ -41,10 +42,18 @@ interface Candidate {
 export function CandidatesTable({ jobId, candidates }: { jobId: string; candidates: Candidate[] }) {
     const router = useRouter()
 
-    async function handleStatusChange(candidateId: string, status: 'interviewed' | 'rejected') {
+    async function handleStatusChange(candidateId: string, status: CandidateStatus) {
         try {
             await updateCandidateStatus(candidateId, status)
-            toast.success(status === 'interviewed' ? 'Moved to interview' : 'Candidate rejected')
+            const labels: Record<CandidateStatus, string> = {
+                new: 'Candidate moved to new',
+                screening: 'Candidate moved to screening',
+                interviewed: 'Moved to interview',
+                offered: 'Candidate marked as offered',
+                hired: 'Candidate marked as hired',
+                rejected: 'Candidate rejected',
+            }
+            toast.success(labels[status])
             router.refresh()
         } catch {
             toast.error('Failed to update status')
@@ -101,7 +110,8 @@ export function CandidatesTable({ jobId, candidates }: { jobId: string; candidat
                             <TableCell>
                                 <Badge variant={
                                     candidate.status === 'new' ? 'secondary' :
-                                        candidate.status === 'interviewed' ? 'default' : 'outline'
+                                        candidate.status === 'interviewed' ? 'default' :
+                                            candidate.status === 'hired' ? 'default' : 'outline'
                                 }>
                                     {candidate.status}
                                 </Badge>
@@ -110,6 +120,9 @@ export function CandidatesTable({ jobId, candidates }: { jobId: string; candidat
                                 {formatDistanceToNow(new Date(candidate.createdAt), { addSuffix: true })}
                             </TableCell>
                             <TableCell className="text-right">
+                                {candidate.status === 'hired' ? (
+                                    <Badge variant="secondary">Locked (Hired)</Badge>
+                                ) : (
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                         <Button variant="ghost" size="icon">
@@ -131,11 +144,18 @@ export function CandidatesTable({ jobId, candidates }: { jobId: string; candidat
                                         <DropdownMenuItem onClick={() => handleStatusChange(candidate.id, 'interviewed')}>
                                             Move to Interview
                                         </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleStatusChange(candidate.id, 'offered')}>
+                                            Mark as Offered
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleStatusChange(candidate.id, 'hired')}>
+                                            Mark as Hired
+                                        </DropdownMenuItem>
                                         <DropdownMenuItem className="text-red-600" onClick={() => handleStatusChange(candidate.id, 'rejected')}>
                                             Reject
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
+                                )}
                             </TableCell>
                         </TableRow>
                     ))}

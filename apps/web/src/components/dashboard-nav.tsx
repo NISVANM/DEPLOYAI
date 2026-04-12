@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Briefcase, Users, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, Briefcase, Users, Settings, LogOut, Calendar } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase'
@@ -13,6 +13,7 @@ const navItems = [
     { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
     { href: '/dashboard/jobs', label: 'Jobs', icon: Briefcase },
     { href: '/dashboard/candidates', label: 'Candidates', icon: Users },
+    { href: '/dashboard/scheduling', label: 'Scheduling', icon: Calendar },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -39,7 +40,8 @@ export function DashboardNav() {
                         href={item.href}
                         className={cn(
                             "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
-                            pathname === item.href && "bg-muted text-primary"
+                            (pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'))) &&
+                                'bg-muted text-primary'
                         )}
                     >
                         <Icon className="h-4 w-4" />

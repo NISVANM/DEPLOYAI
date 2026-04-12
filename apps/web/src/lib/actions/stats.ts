@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase-server'
 import { jobs, candidates, companies } from '@/lib/db/schema'
 import { unstable_noStore } from 'next/cache'
 import { count, eq, and } from 'drizzle-orm'
-import { db } from '@/lib/db/drizzle-client'
+import { getDb } from '@/lib/db/drizzle-client'
 
 const emptyStats = { jobsCount: 0, candidatesCount: 0, screenedCount: 0, interviewCount: 0 }
 
@@ -15,7 +15,7 @@ export async function getDashboardStats() {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return emptyStats
 
-        const userCompanies = await db.select({ id: companies.id })
+        const userCompanies = await getDb().select({ id: companies.id })
             .from(companies)
             .where(eq(companies.ownerId, user.id))
             .limit(1)
@@ -24,19 +24,19 @@ export async function getDashboardStats() {
 
         const companyId = userCompanies[0].id
 
-        const jobsCount = await db.select({ count: count() })
+        const jobsCount = await getDb().select({ count: count() })
             .from(jobs)
             .where(eq(jobs.companyId, companyId))
 
-        const candidatesCount = await db.select({ count: count() })
+        const candidatesCount = await getDb().select({ count: count() })
             .from(candidates)
             .where(eq(candidates.companyId, companyId))
 
-        const screenedCount = await db.select({ count: count() })
+        const screenedCount = await getDb().select({ count: count() })
             .from(candidates)
             .where(eq(candidates.companyId, companyId))
 
-        const interviewCount = await db.select({ count: count() })
+        const interviewCount = await getDb().select({ count: count() })
             .from(candidates)
             .where(and(eq(candidates.companyId, companyId), eq(candidates.status, 'interviewed')))
 

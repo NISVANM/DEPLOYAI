@@ -4,9 +4,11 @@ import { createClient } from '@/lib/supabase-server'
 import { candidates, jobs, companies } from '@/lib/db/schema'
 import { revalidatePath, unstable_noStore } from 'next/cache'
 import { eq, and, desc } from 'drizzle-orm'
-import { db } from '@/lib/db/drizzle-client'
+import { getDb } from '@/lib/db/drizzle-client'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import mammoth from 'mammoth'
+import { handleCandidateStatusChanged } from '@/lib/integrations/dispatcher'
+import type { CandidateStatus } from '@/lib/integrations/types'
 
 // PDF parsing is done in GET /api/extract-pdf-text to avoid bundling pdf-parse into
 // server actions (worker / "expression too dynamic" errors in Next.js).
@@ -66,11 +68,11 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
     }
 
     // 3. AI Parse & Score (Groq free tier first if key set; else Gemini)
-    const jobRows = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
+    const jobRows = await getDb().select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
     if (!jobRows.length) throw new Error('Job not found')
     const jobData = jobRows[0]
 
-    const userCompanies = await db.select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
+    const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
     if (!userCompanies.length || jobData.companyId !== userCompanies[0].id) throw new Error('Unauthorized')
 
     if (!process.env.GROQ_API_KEY && !process.env.GEMINI_API_KEY) {
@@ -182,7 +184,7 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
     const parsed = JSON.parse(content)
 
     // 4. Save to DB
-    await db.insert(candidates).values({
+    await getDb().insert(candidates).values({
         jobId,
         companyId: jobData.companyId,
         name: parsed.name || 'Unknown Candidate',
@@ -210,13 +212,13 @@ export async function getAllCandidatesForCompany() {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return []
 
-        const userCompanies = await db.select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
+        const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
         if (!userCompanies.length) return []
 
         const companyId = userCompanies[0].id
-        const rows = await db.select().from(candidates).where(eq(candidates.companyId, companyId)).orderBy(desc(candidates.score))
+        const rows = await getDb().select().from(candidates).where(eq(candidates.companyId, companyId)).orderBy(desc(candidates.score))
         const jobIds = [...new Set(rows.map((r) => r.jobId))]
-        const jobRows = jobIds.length ? await db.select({ id: jobs.id, title: jobs.title }).from(jobs).where(eq(jobs.companyId, companyId)) : []
+        const jobRows = jobIds.length ? await getDb().select({ id: jobs.id, title: jobs.title }).from(jobs).where(eq(jobs.companyId, companyId)) : []
         const jobMap = Object.fromEntries(jobRows.map((j) => [j.id, j.title]))
         return rows.map((c) => ({ ...c, jobTitle: jobMap[c.jobId] ?? 'Unknown' }))
     } catch {
@@ -231,30 +233,72 @@ export async function getCandidates(jobId: string) {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return []
 
-        const userCompanies = await db.select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
+        const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
         if (!userCompanies.length) return []
 
-        const jobRows = await db.select({ companyId: jobs.companyId }).from(jobs).where(eq(jobs.id, jobId)).limit(1)
+        const jobRows = await getDb().select({ companyId: jobs.companyId }).from(jobs).where(eq(jobs.id, jobId)).limit(1)
         if (!jobRows.length || jobRows[0].companyId !== userCompanies[0].id) return []
 
-        return await db.select().from(candidates).where(eq(candidates.jobId, jobId)).orderBy(candidates.score)
+        return await getDb().select().from(candidates).where(eq(candidates.jobId, jobId)).orderBy(candidates.score)
     } catch {
         return []
     }
 }
 
-export async function updateCandidateStatus(candidateId: string, status: 'new' | 'screening' | 'interviewed' | 'offered' | 'rejected') {
+export async function updateCandidateStatus(candidateId: string, status: CandidateStatus) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
 
-    const userCompanies = await db.select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
+    const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
     if (!userCompanies.length) throw new Error('Unauthorized')
 
-    const candidateRows = await db.select({ jobId: candidates.jobId, companyId: candidates.companyId }).from(candidates).where(eq(candidates.id, candidateId)).limit(1)
+    const candidateRows = await getDb()
+        .select({
+            id: candidates.id,
+            jobId: candidates.jobId,
+            companyId: candidates.companyId,
+            status: candidates.status,
+            name: candidates.name,
+            email: candidates.email,
+            phone: candidates.phone,
+            score: candidates.score,
+        })
+        .from(candidates)
+        .where(eq(candidates.id, candidateId))
+        .limit(1)
     if (!candidateRows.length || candidateRows[0].companyId !== userCompanies[0].id) throw new Error('Unauthorized')
 
-    await db.update(candidates).set({ status }).where(eq(candidates.id, candidateId))
+    const previousStatus = candidateRows[0].status as CandidateStatus
+    if (previousStatus === 'hired' && status !== 'hired') {
+        throw new Error('Status is locked after hired')
+    }
+    if (previousStatus === 'hired' && status === 'hired') {
+        return
+    }
+    await getDb().update(candidates).set({ status }).where(eq(candidates.id, candidateId))
+
+    const jobRows = await getDb()
+        .select({ title: jobs.title })
+        .from(jobs)
+        .where(eq(jobs.id, candidateRows[0].jobId))
+        .limit(1)
+
+    await handleCandidateStatusChanged({
+        companyId: candidateRows[0].companyId,
+        candidateId: candidateRows[0].id,
+        candidateName: candidateRows[0].name,
+        candidateEmail: candidateRows[0].email,
+        candidatePhone: candidateRows[0].phone,
+        candidateScore: candidateRows[0].score,
+        jobId: candidateRows[0].jobId,
+        jobTitle: jobRows[0]?.title ?? 'Job',
+        fromStatus: previousStatus,
+        toStatus: status,
+        changedByUserId: user.id,
+        changedAt: new Date(),
+    })
+
     revalidatePath('/dashboard/jobs')
     revalidatePath('/dashboard')
 }
@@ -266,13 +310,13 @@ export async function getCandidate(candidateId: string, jobId: string) {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return null
 
-        const userCompanies = await db.select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
+        const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
         if (!userCompanies.length) return null
 
-        const jobRows = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
+        const jobRows = await getDb().select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
         if (!jobRows.length || jobRows[0].companyId !== userCompanies[0].id) return null
 
-        const candidateRows = await db.select().from(candidates).where(and(eq(candidates.id, candidateId), eq(candidates.jobId, jobId))).limit(1)
+        const candidateRows = await getDb().select().from(candidates).where(and(eq(candidates.id, candidateId), eq(candidates.jobId, jobId))).limit(1)
         if (!candidateRows.length) return null
         return candidateRows[0]
     } catch {

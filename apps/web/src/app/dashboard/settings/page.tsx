@@ -1,12 +1,14 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { getCompany } from "@/lib/actions/company"
 import { CompanyProfileForm } from "@/components/company-profile-form"
+import { getIntegrationSettings } from "@/lib/actions/integrations"
+import { IntegrationSettingsForm } from "@/components/integration-settings-form"
 
 export default async function SettingsPage() {
     const company = await getCompany()
+    const integrations = await getIntegrationSettings().catch(() => null)
 
     return (
         <div className="flex flex-col gap-6">
@@ -27,6 +29,8 @@ export default async function SettingsPage() {
                     <p className="text-sm text-muted-foreground">Team invites coming soon.</p>
                 </CardContent>
             </Card>
+
+            {integrations && <IntegrationSettingsForm {...integrations} />}
         </div>
     )
 }

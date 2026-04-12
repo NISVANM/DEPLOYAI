@@ -1,5 +1,7 @@
 import { getCandidate } from "@/lib/actions/candidates"
 import { getJob } from "@/lib/actions/jobs"
+import { isCalcomSchedulingActiveForCompany } from "@/lib/actions/scheduling"
+import { CandidateSchedulingLinkCard } from "@/components/candidate-scheduling-link"
 import { notFound } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +20,8 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
     const candidate = await getCandidate(candidateId, id)
     if (!candidate) notFound()
 
+    const schedulingActive = await isCalcomSchedulingActiveForCompany(job.companyId)
+
     return (
         <div className="flex flex-col gap-6">
             <div className="flex items-center gap-4">
@@ -28,7 +32,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
                     <h1 className="text-2xl font-bold">{candidate.name}</h1>
                     <p className="text-muted-foreground">{job.title} • {candidate.status}</p>
                 </div>
-                <CandidateStatusActions candidateId={candidateId} jobId={id} />
+                <CandidateStatusActions candidateId={candidateId} jobId={id} currentStatus={candidate.status} />
             </div>
 
             <div className="grid gap-6 md:grid-cols-3">
@@ -153,6 +157,10 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
                                 </div>
                             </CardContent>
                         </Card>
+                    )}
+
+                    {schedulingActive && (
+                        <CandidateSchedulingLinkCard candidateId={candidateId} jobId={id} />
                     )}
                 </div>
             </div>
