@@ -193,3 +193,13 @@ Posting jobs uses **Postgres** via **`DATABASE_URL`** (not only Supabase Auth). 
 4. **Transaction pooler (port 6543)** on Vercel: prefer Supabase **Connection pooling** → **Transaction** URI (not direct `db.*.supabase.co:5432` if you see timeouts). The app uses **`postgres.js`** with **`prepare: false`** for the pooler.
 
 5. **Vercel `DATABASE_URL`**: paste the URI **without** surrounding `"` quotes. If the toast still mentions **“drizzle-kit push”**, that deployment is **old** — open Vercel → **Deployments**, confirm the latest commit is **Ready**, then hard-refresh the site.
+
+### SMTP / candidate emails (status “sent” but no message?)
+
+The app marks an email **sent** after your SMTP server **accepts** the message (same as most apps). That is **not** a guarantee it reached the candidate’s inbox.
+
+1. **Copy all `SMTP_*` variables to Vercel** (Production). Local `.env.local` does not apply on the server.
+2. **Gmail**: use **`smtp.gmail.com`**, port **587**, **`SMTP_SECURE=false`**, and an **[App Password](https://support.google.com/accounts/answer/185833)** (not your normal login password). Set **`SMTP_USER`** and **`SMTP_FROM_EMAIL`** to the **same Gmail address** unless you’ve added a verified “Send mail as” alias.
+3. **Sent folder**: mail sent via **SMTP often does not appear** in Gmail’s **Sent** UI — that is normal. Check **Vercel → Deployment → Functions / Logs** for a line like `[smtp] accepted` with a `messageId` to confirm the handoff to Google succeeded.
+4. **Recipient**: confirm the **candidate’s email** on their profile is correct; check **Spam / Promotions** on the recipient account.
+5. For production reliability, consider a transactional provider (**Resend**, **SendGrid**, **Postmark**) with their SMTP hostname and API-aligned from-address rules.
