@@ -32,6 +32,12 @@ Smart Candidate Screening & Ranking System.
    - **`DATABASE_URL`**: use Supabase **Transaction pooler** (port **6543**), not direct `db.*.supabase.co:5432`, if you see **`CONNECT_TIMEOUT`** or timeouts from localhost/Vercel.
    - Optional feature toggles for staged rollout: `FEATURE_CANDIDATE_EMAIL_AUTOMATION`, `FEATURE_SCHEDULING`. HRIS/hired webhooks use **Settings → HRIS Webhook**, not an env flag.
 
+### Sign up email (verification code)
+
+Sign-up uses **email OTP**, not the confirmation link. In **Supabase → Authentication → Email Templates → Confirm sign up**, include the code so users can copy it:
+
+`Your code: {{ .Token }}`. The app expects an **8-digit** numeric code (adjust the signup page validation if your project uses a different `Token` length). You can keep or remove the link; the app verifies with `verifyOtp` using the code. Add your site URL to **Redirect URLs** if you still use `emailRedirectTo` for resend/callback.
+
 ### DATABASE_URL (avoid timeouts)
 
 1. Supabase → **Project Settings** → **Database**.
