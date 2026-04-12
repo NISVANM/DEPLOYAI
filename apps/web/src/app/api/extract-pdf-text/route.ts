@@ -1,29 +1,10 @@
 /**
- * PDF text extraction using pdf2json (no worker; avoids "expression too dynamic" in Next.js).
+ * PDF text extraction — thin HTTP wrapper; server actions import @/lib/pdf-extract directly.
  */
+import { extractTextFromPdfBuffer } from '@/lib/pdf-extract'
+
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
-
-function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const PDFParser = require('pdf2json')
-        const parser = new (PDFParser.default ?? PDFParser)(null, 1)
-
-        parser.on('pdfParser_dataReady', () => {
-            try {
-                const text = parser.getRawTextContent()
-                resolve(text ?? '')
-            } catch (e) {
-                reject(e)
-            }
-        })
-        parser.on('pdfParser_dataError', (err: { parserError?: unknown }) => {
-            reject(err?.parserError ?? new Error('PDF parse error'))
-        })
-
-        parser.parseBuffer(buffer, 0)
-    })
-}
 
 export async function POST(request: Request) {
     try {

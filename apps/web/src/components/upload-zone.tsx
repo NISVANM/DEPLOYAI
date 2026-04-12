@@ -39,15 +39,23 @@ export function UploadZone({ jobId }: { jobId: string }) {
             } catch (error) {
                 console.error(error)
                 failCount++
-                const message = error instanceof Error ? error.message : 'Upload failed'
-                toast.error(message, { duration: 6000 })
+                let message =
+                    error instanceof Error ? error.message : typeof error === 'string' ? error : 'Upload failed'
+                if (
+                    message.includes('digest') ||
+                    message.includes('An error occurred in the Server Components') ||
+                    message.includes('omitted in production')
+                ) {
+                    message =
+                        'Resume upload failed on the server. On Vercel, add GEMINI_API_KEY or GROQ_API_KEY, confirm the Supabase `resumes` bucket exists, and redeploy.'
+                }
+                toast.error(message, { duration: 10000 })
             }
         }
 
         setUploading(false)
         setFiles([])
-        if (successCount > 0) toast.success(`Processed ${successCount} resumes`)
-        if (failCount > 0) toast.error(`Failed to process ${failCount} resume${failCount === 1 ? '' : 's'}`)
+        if (successCount > 0) toast.success(`Processed ${successCount} resume${successCount === 1 ? '' : 's'}`)
     }
 
     return (

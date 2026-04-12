@@ -7,16 +7,9 @@ import { eq, and, desc } from 'drizzle-orm'
 import { getDb } from '@/lib/db/drizzle-client'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import mammoth from 'mammoth'
+import { extractTextFromPdfBuffer } from '@/lib/pdf-extract'
 import { handleCandidateStatusChanged } from '@/lib/integrations/dispatcher'
 import type { CandidateStatus } from '@/lib/integrations/types'
-
-// PDF parsing is done in GET /api/extract-pdf-text to avoid bundling pdf-parse into
-// server actions (worker / "expression too dynamic" errors in Next.js).
-function getBaseUrl(): string {
-    if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
-    if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-    return 'http://localhost:3000'
-}
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
@@ -51,15 +44,12 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
     let text = ''
 
     if (file.type === 'application/pdf') {
-        const form = new FormData()
-        form.set('file', new Blob([buffer], { type: 'application/pdf' }), 'resume.pdf')
-        const res = await fetch(`${getBaseUrl()}/api/extract-pdf-text`, { method: 'POST', body: form })
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}))
-            throw new Error(err.error ?? `PDF extraction failed: ${res.status}`)
+        try {
+            text = await extractTextFromPdfBuffer(buffer)
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e)
+            throw new Error(`Could not read this PDF (${msg}). Try re-exporting the file or use DOCX.`)
         }
-        const data = (await res.json()) as { text?: string }
-        text = data.text ?? ''
     } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         const result = await mammoth.extractRawText({ buffer })
         text = result.value
@@ -76,7 +66,9 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
     if (!userCompanies.length || jobData.companyId !== userCompanies[0].id) throw new Error('Unauthorized')
 
     if (!process.env.GROQ_API_KEY && !process.env.GEMINI_API_KEY) {
-        throw new Error('Set GROQ_API_KEY (free tier recommended) or GEMINI_API_KEY in .env.local. Get Groq key at console.groq.com')
+        throw new Error(
+            'Add GROQ_API_KEY or GEMINI_API_KEY to your environment (e.g. Vercel → Settings → Environment Variables), then redeploy.'
+        )
     }
 
     // Model must be available in your Google AI Studio / API key. Fallback to gemini-pro if primary returns 404.
@@ -179,9 +171,24 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
         }
     }
 
-    if (!content) throw lastError ?? new Error('AI parse failed. Set GROQ_API_KEY (free at console.groq.com) or GEMINI_API_KEY in .env.local')
+    if (!content) throw lastError ?? new Error('AI parse failed. Check GROQ_API_KEY / GEMINI_API_KEY on the server and API quotas.')
 
-    const parsed = JSON.parse(content)
+    type AiResume = {
+        name?: string
+        email?: string
+        phone?: string
+        skills?: string[]
+        summary?: string
+        education?: unknown
+        score?: number
+        match_analysis?: unknown
+    }
+    let parsed: AiResume
+    try {
+        parsed = JSON.parse(content) as AiResume
+    } catch {
+        throw new Error('The AI returned invalid data for this resume. Try again or use a shorter PDF.')
+    }
 
     // 4. Save to DB
     await getDb().insert(candidates).values({
@@ -191,7 +198,7 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
         email: parsed.email || 'unknown@example.com',
         phone: parsed.phone,
         resumeUrl: resumeUrl || '',
-        parsedData: parsed,
+        parsedData: parsed as Record<string, unknown>,
         skills: parsed.skills,
         experience: parsed.summary,
         education: parsed.education,
