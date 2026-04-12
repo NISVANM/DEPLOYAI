@@ -177,6 +177,13 @@ If Vercel’s **Root Directory** is left as `.` (repo root), the build never run
 
 Framework should stay **Next.js**. Copy env vars from `.env.example` into Vercel → **Settings** → **Environment Variables**.
 
+### Performance (latency)
+
+- **Middleware** only runs on `/dashboard`, `/login`, and `/signup` (not on `/`, APIs, or public scheduling links), so most requests skip an extra Supabase session round-trip.
+- Use Supabase **transaction pooler** (`DATABASE_URL` on port **6543**) for fast DB access from Vercel.
+- In **Vercel → Settings → Functions**, pick a **region** close to your users (see `vercel.json` `regions` if set).
+- **Resume uploads**: large PDFs + AI calls are inherently slow; Groq is usually faster/cheaper than Gemini for parsing.
+
 ### Jobs / “Database error” on production
 
 Posting jobs uses **Postgres** via **`DATABASE_URL`** (not only Supabase Auth). You must:
