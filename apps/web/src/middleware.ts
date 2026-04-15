@@ -64,8 +64,7 @@ export async function middleware(request: NextRequest) {
         }
     )
 
-    // Refresh session so server components and actions get fresh auth (avoids intermittent "no data")
-    await supabase.auth.getSession()
+    // getUser() is enough here and avoids an extra auth round-trip in middleware.
     const { data: { user } } = await supabase.auth.getUser()
 
     const isAuthPage = request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/signup')

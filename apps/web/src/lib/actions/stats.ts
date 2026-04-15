@@ -24,21 +24,17 @@ export async function getDashboardStats() {
 
         const companyId = userCompanies[0].id
 
-        const jobsCount = await getDb().select({ count: count() })
-            .from(jobs)
-            .where(eq(jobs.companyId, companyId))
-
-        const candidatesCount = await getDb().select({ count: count() })
-            .from(candidates)
-            .where(eq(candidates.companyId, companyId))
-
-        const screenedCount = await getDb().select({ count: count() })
-            .from(candidates)
-            .where(eq(candidates.companyId, companyId))
-
-        const interviewCount = await getDb().select({ count: count() })
-            .from(candidates)
-            .where(and(eq(candidates.companyId, companyId), eq(candidates.status, 'interviewed')))
+        const [jobsCount, candidatesCount, interviewCount] = await Promise.all([
+            getDb().select({ count: count() })
+                .from(jobs)
+                .where(eq(jobs.companyId, companyId)),
+            getDb().select({ count: count() })
+                .from(candidates)
+                .where(eq(candidates.companyId, companyId)),
+            getDb().select({ count: count() })
+                .from(candidates)
+                .where(and(eq(candidates.companyId, companyId), eq(candidates.status, 'interviewed'))),
+        ])
 
         return {
             jobsCount: jobsCount[0].count,

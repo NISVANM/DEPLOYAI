@@ -152,6 +152,19 @@ CREATE TABLE IF NOT EXISTS scheduling_tokens (
   created_at timestamp DEFAULT now() NOT NULL
 );
 
+-- 2b. Performance indexes (safe to re-run)
+CREATE INDEX IF NOT EXISTS idx_companies_owner_id ON companies(owner_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_company_created_at ON jobs(company_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_candidates_company_score ON candidates(company_id, score DESC);
+CREATE INDEX IF NOT EXISTS idx_candidates_job_score ON candidates(job_id, score DESC);
+CREATE INDEX IF NOT EXISTS idx_candidates_company_status ON candidates(company_id, status);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_company_created_at ON webhook_events(company_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_status_next_retry ON webhook_events(status, next_retry_at);
+CREATE INDEX IF NOT EXISTS idx_email_events_company_created_at ON email_events(company_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_email_events_status_next_retry ON email_events(status, next_retry_at);
+CREATE INDEX IF NOT EXISTS idx_scheduling_tokens_company_created_at ON scheduling_tokens(company_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_scheduling_tokens_token_expires_at ON scheduling_tokens(token, expires_at);
+
 -- 3. Enable RLS
 ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE company_memberships ENABLE ROW LEVEL SECURITY;

@@ -14,10 +14,12 @@ import Link from "next/link"
 
 export default async function CandidatePage({ params }: { params: Promise<{ id: string; candidateId: string }> }) {
     const { id, candidateId } = await params
-    const job = await getJob(id)
+    const [job, candidate] = await Promise.all([
+        getJob(id),
+        getCandidate(candidateId, id),
+    ])
     if (!job) notFound()
 
-    const candidate = await getCandidate(candidateId, id)
     if (!candidate) notFound()
 
     const schedulingActive = await isCalcomSchedulingActiveForCompany(job.companyId)

@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase-server'
 import { candidates, jobs, companies } from '@/lib/db/schema'
 import { revalidatePath, unstable_noStore } from 'next/cache'
-import { eq, and, desc } from 'drizzle-orm'
+import { eq, and, desc, inArray } from 'drizzle-orm'
 import { getDb } from '@/lib/db/drizzle-client'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import mammoth from 'mammoth'
@@ -24,21 +24,13 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
 
-    // 1. Upload to Supabase Storage
+    // 1. Start upload to Supabase Storage (in parallel with extraction)
     const filename = `${jobId}/${Date.now()}-${file.name}`
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const uploadPromise = supabase.storage
         .from('resumes')
         .upload(filename, file)
 
-    if (uploadError) {
-        console.error('Upload Error:', uploadError)
-    }
-
-    const resumeUrl = uploadData?.path
-        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/resumes/${uploadData.path}`
-        : null
-
-    // 2. Extract Text (PDF via API route to avoid bundling pdf-parse in this action)
+    // 2. Extract Text while upload is in-flight
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
     let text = ''
@@ -57,12 +49,23 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
         text = buffer.toString('utf-8')
     }
 
+    const { data: uploadData, error: uploadError } = await uploadPromise
+    if (uploadError) {
+        console.error('Upload Error:', uploadError)
+    }
+
+    const resumeUrl = uploadData?.path
+        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/resumes/${uploadData.path}`
+        : null
+
     // 3. AI Parse & Score (Groq free tier first if key set; else Gemini)
-    const jobRows = await getDb().select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
+    const [jobRows, userCompanies] = await Promise.all([
+        getDb().select().from(jobs).where(eq(jobs.id, jobId)).limit(1),
+        getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1),
+    ])
     if (!jobRows.length) throw new Error('Job not found')
     const jobData = jobRows[0]
 
-    const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
     if (!userCompanies.length || jobData.companyId !== userCompanies[0].id) throw new Error('Unauthorized')
 
     if (!process.env.GROQ_API_KEY && !process.env.GEMINI_API_KEY) {
@@ -225,7 +228,12 @@ export async function getAllCandidatesForCompany() {
         const companyId = userCompanies[0].id
         const rows = await getDb().select().from(candidates).where(eq(candidates.companyId, companyId)).orderBy(desc(candidates.score))
         const jobIds = [...new Set(rows.map((r) => r.jobId))]
-        const jobRows = jobIds.length ? await getDb().select({ id: jobs.id, title: jobs.title }).from(jobs).where(eq(jobs.companyId, companyId)) : []
+        const jobRows = jobIds.length
+            ? await getDb()
+                .select({ id: jobs.id, title: jobs.title })
+                .from(jobs)
+                .where(and(eq(jobs.companyId, companyId), inArray(jobs.id, jobIds)))
+            : []
         const jobMap = Object.fromEntries(jobRows.map((j) => [j.id, j.title]))
         return rows.map((c) => ({ ...c, jobTitle: jobMap[c.jobId] ?? 'Unknown' }))
     } catch {
@@ -240,10 +248,12 @@ export async function getCandidates(jobId: string) {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return []
 
-        const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
+        const [userCompanies, jobRows] = await Promise.all([
+            getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1),
+            getDb().select({ companyId: jobs.companyId }).from(jobs).where(eq(jobs.id, jobId)).limit(1),
+        ])
         if (!userCompanies.length) return []
 
-        const jobRows = await getDb().select({ companyId: jobs.companyId }).from(jobs).where(eq(jobs.id, jobId)).limit(1)
         if (!jobRows.length || jobRows[0].companyId !== userCompanies[0].id) return []
 
         return await getDb().select().from(candidates).where(eq(candidates.jobId, jobId)).orderBy(candidates.score)
@@ -317,10 +327,12 @@ export async function getCandidate(candidateId: string, jobId: string) {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return null
 
-        const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
+        const [userCompanies, jobRows] = await Promise.all([
+            getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1),
+            getDb().select().from(jobs).where(eq(jobs.id, jobId)).limit(1),
+        ])
         if (!userCompanies.length) return null
 
-        const jobRows = await getDb().select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
         if (!jobRows.length || jobRows[0].companyId !== userCompanies[0].id) return null
 
         const candidateRows = await getDb().select().from(candidates).where(and(eq(candidates.id, candidateId), eq(candidates.jobId, jobId))).limit(1)

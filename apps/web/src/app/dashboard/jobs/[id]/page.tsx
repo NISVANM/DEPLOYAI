@@ -10,10 +10,11 @@ import { Badge } from "@/components/ui/badge"
 
 export default async function JobDetailsPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
-    const jobData = await getJob(id)
+    const [jobData, candidates] = await Promise.all([
+        getJob(id),
+        getCandidates(id),
+    ])
     if (!jobData) notFound()
-
-    const candidates = await getCandidates(id)
 
     return (
         <div className="flex flex-col gap-6">

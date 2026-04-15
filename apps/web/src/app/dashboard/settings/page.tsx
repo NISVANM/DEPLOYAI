@@ -7,8 +7,10 @@ import { getIntegrationSettings } from "@/lib/actions/integrations"
 import { IntegrationSettingsForm } from "@/components/integration-settings-form"
 
 export default async function SettingsPage() {
-    const company = await getCompany()
-    const integrations = await getIntegrationSettings().catch(() => null)
+    const [company, integrations] = await Promise.all([
+        getCompany(),
+        getIntegrationSettings().catch(() => null),
+    ])
 
     return (
         <div className="flex flex-col gap-6">

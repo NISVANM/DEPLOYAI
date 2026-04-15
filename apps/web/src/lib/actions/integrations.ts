@@ -53,38 +53,37 @@ async function getCurrentUserCompany() {
 export async function getIntegrationSettings() {
     const { companyId } = await getCurrentUserCompany()
 
-    const configRows = await getDb()
-        .select()
-        .from(integrationConfigs)
-        .where(eq(integrationConfigs.companyId, companyId))
+    const [configRows, scheduling, templates, recentWebhookEvents, recentEmailEvents] = await Promise.all([
+        getDb()
+            .select()
+            .from(integrationConfigs)
+            .where(eq(integrationConfigs.companyId, companyId)),
+        getDb()
+            .select()
+            .from(schedulingProviderConfigs)
+            .where(eq(schedulingProviderConfigs.companyId, companyId))
+            .limit(1),
+        getDb()
+            .select()
+            .from(emailTemplates)
+            .where(eq(emailTemplates.companyId, companyId))
+            .orderBy(emailTemplates.key),
+        getDb()
+            .select()
+            .from(webhookEvents)
+            .where(eq(webhookEvents.companyId, companyId))
+            .orderBy(desc(webhookEvents.createdAt))
+            .limit(10),
+        getDb()
+            .select()
+            .from(emailEvents)
+            .where(eq(emailEvents.companyId, companyId))
+            .orderBy(desc(emailEvents.createdAt))
+            .limit(10),
+    ])
 
     const map = Object.fromEntries(configRows.map((row) => [row.provider, row]))
     const webhook = map.generic_webhook
-    const scheduling = await getDb()
-        .select()
-        .from(schedulingProviderConfigs)
-        .where(eq(schedulingProviderConfigs.companyId, companyId))
-        .limit(1)
-
-    const templates = await getDb()
-        .select()
-        .from(emailTemplates)
-        .where(eq(emailTemplates.companyId, companyId))
-        .orderBy(emailTemplates.key)
-
-    const recentWebhookEvents = await getDb()
-        .select()
-        .from(webhookEvents)
-        .where(eq(webhookEvents.companyId, companyId))
-        .orderBy(desc(webhookEvents.createdAt))
-        .limit(10)
-
-    const recentEmailEvents = await getDb()
-        .select()
-        .from(emailEvents)
-        .where(eq(emailEvents.companyId, companyId))
-        .orderBy(desc(emailEvents.createdAt))
-        .limit(10)
 
     return {
         webhook: {
