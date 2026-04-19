@@ -5,6 +5,9 @@
 
 export const CALCOM_EVENT_TYPES_API_VERSION = '2024-06-14'
 
+/** Required for `GET /v2/bookings` — see Cal.com bookings API docs */
+export const CALCOM_BOOKINGS_API_VERSION = '2026-02-25'
+
 export type CalcomStoredConfig = {
     /** API key (cal_live_* / cal_test_*). Server-only; never send to the client. */
     apiKey?: string
@@ -79,4 +82,119 @@ export function buildCalcomBookingPageUrl(opts: {
 export function calcomConfigReadyForLinks(cal: CalcomStoredConfig | null | undefined): boolean {
     if (!cal) return false
     return Boolean(String(cal.username ?? '').trim() && String(cal.eventSlug ?? '').trim())
+}
+
+export type CalcomBookingListItem = {
+    id: number
+    uid?: string
+    status: string
+    start: string
+    createdAt: string
+    attendees?: Array<{ email?: string }>
+}
+
+/**
+ * Recent bookings for matching to scheduling invites (server-only).
+ * Uses Cal.com API v2 — requires a valid API key with booking read access.
+ */
+export async function calcomFetchRecentBookings(
+    apiKey: string,
+    apiBaseUrl: string | undefined,
+    opts: {
+        /** Only bookings created on or after this instant (e.g. oldest invite minus buffer) */
+        afterCreatedAt: Date
+        take?: number
+        /** When set, limits to this event type (recommended if you have many event types) */
+        eventTypeId?: number
+    }
+): Promise<CalcomBookingListItem[]> {
+    const base = normalizeCalcomApiBase(apiBaseUrl)
+    const url = new URL(`${base}/v2/bookings`)
+    url.searchParams.set('afterCreatedAt', opts.afterCreatedAt.toISOString())
+    url.searchParams.set('take', String(opts.take ?? 100))
+    url.searchParams.set('sortCreated', 'asc')
+    if (opts.eventTypeId != null && Number.isFinite(opts.eventTypeId)) {
+        url.searchParams.set('eventTypeId', String(opts.eventTypeId))
+    }
+    const res = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+            Authorization: `Bearer ${apiKey.trim()}`,
+            'cal-api-version': CALCOM_BOOKINGS_API_VERSION,
+        },
+        cache: 'no-store',
+    })
+    const text = await res.text()
+    if (!res.ok) {
+        throw new Error(`Cal.com bookings ${res.status}: ${text.slice(0, 500)}`)
+    }
+    let parsed: { data?: unknown[] }
+    try {
+        parsed = JSON.parse(text) as { data?: unknown[] }
+    } catch {
+        throw new Error('Cal.com returned invalid JSON for bookings')
+    }
+    const raw = Array.isArray(parsed.data) ? parsed.data : []
+    const out: CalcomBookingListItem[] = []
+    for (const item of raw) {
+        if (!item || typeof item !== 'object') continue
+        const row = item as Record<string, unknown>
+        const id = typeof row.id === 'number' ? row.id : Number(row.id)
+        if (!Number.isFinite(id)) continue
+        const status = typeof row.status === 'string' ? row.status : ''
+        const start = typeof row.start === 'string' ? row.start : ''
+        const createdAt = typeof row.createdAt === 'string' ? row.createdAt : ''
+        if (!start || !createdAt) continue
+        const attendees = Array.isArray(row.attendees) ? (row.attendees as CalcomBookingListItem['attendees']) : undefined
+        out.push({
+            id,
+            uid: typeof row.uid === 'string' ? row.uid : undefined,
+            status,
+            start,
+            createdAt,
+            attendees,
+        })
+    }
+    return out
+}
+
+/**
+ * Match Cal.com bookings to scheduling invite rows by attendee email and invite creation time.
+ * Each booking is used at most once; invites are processed in chronological order.
+ */
+export function matchBookingsToInviteIds<
+    T extends { id: string; createdAt: Date; candidateEmail: string },
+>(invites: T[], bookings: CalcomBookingListItem[]): Map<string, Date> {
+    const sortedInvites = [...invites].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    const byEmail = new Map<string, CalcomBookingListItem[]>()
+    for (const b of bookings) {
+        if (b.status === 'cancelled' || b.status === 'rejected') continue
+        const emails = (b.attendees ?? [])
+            .map((a) => (a?.email ?? '').trim().toLowerCase())
+            .filter(Boolean)
+        for (const em of emails) {
+            const list = byEmail.get(em) ?? []
+            list.push(b)
+            byEmail.set(em, list)
+        }
+    }
+    for (const [, list] of byEmail) {
+        list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    }
+    const used = new Set<number>()
+    const out = new Map<string, Date>()
+    for (const inv of sortedInvites) {
+        const email = inv.candidateEmail.trim().toLowerCase()
+        const list = byEmail.get(email) ?? []
+        const hit = list.find(
+            (b) =>
+                !used.has(b.id) &&
+                new Date(b.createdAt).getTime() >= inv.createdAt.getTime()
+        )
+        if (hit) {
+            used.add(hit.id)
+            out.set(inv.id, new Date(hit.start))
+        }
+    }
+    return out
 }

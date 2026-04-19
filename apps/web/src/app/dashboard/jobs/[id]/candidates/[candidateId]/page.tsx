@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { CandidateStatusActions } from "@/components/candidate-status-actions"
+import { CandidateResumeDetails } from "@/components/candidate-resume-details"
 import { ArrowLeft, Download, Mail, Phone, ExternalLink } from "lucide-react"
 import Link from "next/link"
 
@@ -96,19 +97,34 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
                             <div>
                                 <h3 className="font-semibold mb-2">Education</h3>
                                 <div className="space-y-2">
-                                    {(candidate.education as any[])?.map((edu: any, i: number) => (
-                                        <div key={i} className="flex justify-between items-start border-b pb-2 last:border-0">
-                                            <div>
-                                                <div className="font-medium">{edu.school}</div>
-                                                <div className="text-sm text-muted-foreground">{edu.degree}</div>
+                                    {(candidate.education as any[])?.map((edu: any, i: number) => {
+                                        const school = edu.school ?? edu.institution ?? edu.university ?? ''
+                                        const degree = edu.degree ?? edu.program ?? edu.qualification ?? ''
+                                        const year = edu.year ?? edu.graduation_year ?? edu.end ?? ''
+                                        const extra = [edu.field, edu.gpa, edu.honors].filter(Boolean).join(' · ')
+                                        return (
+                                            <div key={i} className="flex justify-between items-start border-b pb-2 last:border-0">
+                                                <div>
+                                                    <div className="font-medium">{school || 'Education'}</div>
+                                                    {degree && <div className="text-sm text-muted-foreground">{degree}</div>}
+                                                    {extra && <div className="text-xs text-muted-foreground mt-0.5">{extra}</div>}
+                                                </div>
+                                                {year ? <div className="text-sm text-muted-foreground shrink-0">{year}</div> : null}
                                             </div>
-                                            <div className="text-sm text-muted-foreground">{edu.year}</div>
-                                        </div>
-                                    ))}
+                                        )
+                                    })}
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
+
+                    <CandidateResumeDetails
+                        parsedData={
+                            candidate.parsedData && typeof candidate.parsedData === 'object' && !Array.isArray(candidate.parsedData)
+                                ? (candidate.parsedData as Record<string, unknown>)
+                                : null
+                        }
+                    />
                 </div>
 
                 <div className="space-y-6">

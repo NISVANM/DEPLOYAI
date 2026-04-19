@@ -18,7 +18,10 @@ export default async function SchedulingInvitesPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>Recent invite links</CardTitle>
-                    <CardDescription>Up to 50 most recent. Booking details live in Cal.com.</CardDescription>
+                    <CardDescription>
+                        Up to 50 most recent. Interview times sync from Cal.com when a{' '}
+                        <strong>Cal.com API key</strong> is saved in Settings (matched by candidate email and booking time).
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     {invites.length === 0 ? (
@@ -30,6 +33,7 @@ export default async function SchedulingInvitesPage() {
                                     <tr className="border-b text-left text-muted-foreground">
                                         <th className="pb-2 pr-4 font-medium">Candidate</th>
                                         <th className="pb-2 pr-4 font-medium">Job</th>
+                                        <th className="pb-2 pr-4 font-medium">Interview scheduled</th>
                                         <th className="pb-2 pr-4 font-medium">Created</th>
                                         <th className="pb-2 pr-4 font-medium">Expires</th>
                                         <th className="pb-2 pr-4 font-medium">Status</th>
@@ -44,6 +48,20 @@ export default async function SchedulingInvitesPage() {
                                             <tr key={row.id} className="border-b border-muted/50">
                                                 <td className="py-3 pr-4 align-top">{row.candidateName}</td>
                                                 <td className="py-3 pr-4 align-top">{row.jobTitle}</td>
+                                                <td className="py-3 pr-4 align-top whitespace-nowrap text-sm">
+                                                    {row.interviewTimeKnown ? (
+                                                        row.interviewAt ? (
+                                                            row.interviewAt.toLocaleString(undefined, {
+                                                                dateStyle: 'medium',
+                                                                timeStyle: 'short',
+                                                            })
+                                                        ) : (
+                                                            <span className="text-muted-foreground">Not booked yet</span>
+                                                        )
+                                                    ) : (
+                                                        <span className="text-muted-foreground">—</span>
+                                                    )}
+                                                </td>
                                                 <td className="py-3 pr-4 align-top whitespace-nowrap">
                                                     {row.createdAt.toLocaleString()}
                                                 </td>
@@ -80,7 +98,9 @@ export default async function SchedulingInvitesPage() {
             </Card>
 
             <p className="text-xs text-muted-foreground">
-                Raw invite URL (for support): copy from the candidate page or email. Full booking visibility remains in{' '}
+                Raw invite URL (for support): copy from the candidate page or email. The <strong>Interview scheduled</strong> column loads from
+                Cal.com bookings (same API key as Settings → Integrations). If it stays empty, confirm the key has booking read access and the
+                candidate email matches their Cal.com booking. Full history remains in{' '}
                 <Link href="https://cal.com" className="underline underline-offset-2" target="_blank" rel="noreferrer">
                     Cal.com
                 </Link>

@@ -91,7 +91,7 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
     Resume Text:
     ${text.substring(0, 10000)}
     
-    Return strict JSON with this structure:
+    Return strict JSON with this structure (use empty arrays [] or omit optional sections if not present in the resume):
     {
         "name": "string",
         "email": "string",
@@ -100,7 +100,24 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
         "experience_years": number,
         "education": [{"degree": "string", "school": "string", "year": "string"}],
         "summary": "string",
-        "score": number, // 0-100
+        "work_experience": [
+            {"company": "string", "title": "string", "location": "string", "start": "string", "end": "string", "description": "string"}
+        ],
+        "projects": [
+            {"name": "string", "description": "string", "technologies": ["string"], "link": "string"}
+        ],
+        "certifications": [
+            {"name": "string", "issuer": "string", "date": "string", "credential_id": "string"}
+        ],
+        "languages": [{"language": "string", "proficiency": "string"}],
+        "awards_honors": [{"title": "string", "issuer": "string", "year": "string"}],
+        "publications": [{"title": "string", "venue": "string", "year": "string"}],
+        "volunteer_experience": [
+            {"organization": "string", "role": "string", "description": "string", "start": "string", "end": "string"}
+        ],
+        "interests": ["string"],
+        "additional_info": "string",
+        "score": number,
         "match_analysis": {
             "strengths": ["string"],
             "weaknesses": ["string"],
@@ -183,6 +200,15 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
         skills?: string[]
         summary?: string
         education?: unknown
+        work_experience?: unknown[]
+        projects?: unknown[]
+        certifications?: unknown[]
+        languages?: unknown[]
+        awards_honors?: unknown[]
+        publications?: unknown[]
+        volunteer_experience?: unknown[]
+        interests?: unknown[]
+        additional_info?: string
         score?: number
         match_analysis?: unknown
     }

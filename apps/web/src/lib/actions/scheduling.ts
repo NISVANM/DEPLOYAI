@@ -10,6 +10,8 @@ import {
     buildCalcomBookingPageUrl,
     calcomConfigReadyForLinks,
     calcomFetchEventTypes,
+    calcomFetchRecentBookings,
+    matchBookingsToInviteIds,
     type CalcomStoredConfig,
 } from '@/lib/integrations/calcom'
 import { candidates, companies, jobs, schedulingProviderConfigs, schedulingTokens } from '@/lib/db/schema'
@@ -102,17 +104,22 @@ export async function ensureSchedulingInviteLinkForInterview(params: {
     return `${getPublicAppBaseUrl()}/schedule/${token}`
 }
 
-export async function listSchedulingInvitesForCompany(): Promise<
-    Array<{
-        id: string
-        inviteUrl: string
-        expiresAt: Date
-        usedAt: Date | null
-        createdAt: Date
-        candidateName: string
-        jobTitle: string
-    }>
-> {
+export type SchedulingInviteRow = {
+    id: string
+    inviteUrl: string
+    expiresAt: Date
+    usedAt: Date | null
+    createdAt: Date
+    candidateName: string
+    candidateEmail: string
+    jobTitle: string
+    /** Interview start time from Cal.com when API key is configured and a booking matches */
+    interviewAt: Date | null
+    /** Whether we could query Cal.com (API key present and request succeeded) */
+    interviewTimeKnown: boolean
+}
+
+export async function listSchedulingInvitesForCompany(): Promise<SchedulingInviteRow[]> {
     const { companyId } = await getCurrentUserCompany()
     const rows = await getDb()
         .select({
@@ -122,6 +129,7 @@ export async function listSchedulingInvitesForCompany(): Promise<
             usedAt: schedulingTokens.usedAt,
             createdAt: schedulingTokens.createdAt,
             candidateName: candidates.name,
+            candidateEmail: candidates.email,
             jobTitle: jobs.title,
         })
         .from(schedulingTokens)
@@ -132,15 +140,61 @@ export async function listSchedulingInvitesForCompany(): Promise<
         .limit(50)
 
     const base = getPublicAppBaseUrl()
-    return rows.map((r) => ({
+    const mapped: SchedulingInviteRow[] = rows.map((r) => ({
         id: r.id,
         inviteUrl: `${base}/schedule/${r.token}`,
         expiresAt: r.expiresAt,
         usedAt: r.usedAt,
         createdAt: r.createdAt,
         candidateName: r.candidateName,
+        candidateEmail: r.candidateEmail,
         jobTitle: r.jobTitle,
+        interviewAt: null,
+        interviewTimeKnown: false,
     }))
+
+    const cal = await getResolvedCalcomConfig(companyId)
+    const apiKey = cal?.apiKey?.trim()
+    if (!apiKey || rows.length === 0) {
+        return mapped
+    }
+
+    try {
+        let minMs = Infinity
+        for (const r of rows) {
+            minMs = Math.min(minMs, r.createdAt.getTime())
+        }
+        const afterCreatedAt = new Date(minMs === Infinity ? Date.now() - 90 * 86400000 : minMs - 7 * 86400000)
+
+        const bookingList = await calcomFetchRecentBookings(apiKey, cal?.apiBaseUrl, {
+            afterCreatedAt,
+            take: 100,
+            eventTypeId: cal?.eventTypeId,
+        })
+
+        const matchInput = rows.map((r) => ({
+            id: r.id,
+            createdAt: r.createdAt,
+            candidateEmail: r.candidateEmail,
+        }))
+        const startById = matchBookingsToInviteIds(matchInput, bookingList)
+
+        return mapped.map((row) => {
+            const t = startById.get(row.id)
+            return {
+                ...row,
+                interviewAt: t ?? null,
+                interviewTimeKnown: true,
+            }
+        })
+    } catch (e) {
+        console.error('listSchedulingInvitesForCompany: Cal.com bookings fetch failed', e)
+        return mapped.map((row) => ({
+            ...row,
+            interviewAt: null,
+            interviewTimeKnown: false,
+        }))
+    }
 }
 
 export async function testCalcomApiConnection(): Promise<{ ok: true; eventTypeCount: number }> {
