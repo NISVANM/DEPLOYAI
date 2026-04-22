@@ -2,9 +2,9 @@
 
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Upload, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Upload, FileText, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { uploadAndParseResume } from '@/lib/actions/candidates'
+import { uploadAndParseResumes } from '@/lib/actions/candidates'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -25,37 +25,39 @@ export function UploadZone({ jobId }: { jobId: string }) {
     })
 
     const handleUpload = async () => {
+        if (files.length === 0) return
         setUploading(true)
-        let successCount = 0
-        let failCount = 0
-
-        for (const file of files) {
+        try {
             const formData = new FormData()
-            formData.append('file', file)
+            files.forEach((file) => formData.append('files', file))
+            const result = await uploadAndParseResumes(jobId, formData)
 
-            try {
-                await uploadAndParseResume(jobId, formData)
-                successCount++
-            } catch (error) {
-                console.error(error)
-                failCount++
-                let message =
-                    error instanceof Error ? error.message : typeof error === 'string' ? error : 'Upload failed'
-                if (
-                    message.includes('digest') ||
-                    message.includes('An error occurred in the Server Components') ||
-                    message.includes('omitted in production')
-                ) {
-                    message =
-                        'Resume upload failed on the server. On Vercel, add GEMINI_API_KEY or GROQ_API_KEY, confirm the Supabase `resumes` bucket exists, and redeploy.'
-                }
-                toast.error(message, { duration: 10000 })
+            if (result.processed > 0) {
+                toast.success(`Processed ${result.processed} resume${result.processed === 1 ? '' : 's'}`)
             }
+            if (result.failed > 0) {
+                const preview = result.errors.slice(0, 3).join('\n')
+                toast.error(
+                    `Failed ${result.failed} resume${result.failed === 1 ? '' : 's'}.\n${preview}`,
+                    { duration: 12000 }
+                )
+            }
+            setFiles([])
+        } catch (error) {
+            console.error(error)
+            let message = error instanceof Error ? error.message : typeof error === 'string' ? error : 'Upload failed'
+            if (
+                message.includes('digest') ||
+                message.includes('An error occurred in the Server Components') ||
+                message.includes('omitted in production')
+            ) {
+                message =
+                    'Resume upload failed on the server. On Vercel, add GEMINI_API_KEY or GROQ_API_KEY, confirm the Supabase `resumes` bucket exists, and redeploy.'
+            }
+            toast.error(message, { duration: 10000 })
+        } finally {
+            setUploading(false)
         }
-
-        setUploading(false)
-        setFiles([])
-        if (successCount > 0) toast.success(`Processed ${successCount} resume${successCount === 1 ? '' : 's'}`)
     }
 
     return (
