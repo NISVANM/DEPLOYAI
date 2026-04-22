@@ -3,7 +3,6 @@
 import crypto from 'crypto'
 import { and, desc, eq, gt, isNull } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase-server'
 import { getDb } from '@/lib/db/drizzle-client'
 import { isSchedulingEnabled } from '@/lib/feature-flags'
 import {
@@ -14,8 +13,9 @@ import {
     matchBookingsToInviteIds,
     type CalcomStoredConfig,
 } from '@/lib/integrations/calcom'
-import { candidates, companies, jobs, schedulingProviderConfigs, schedulingTokens } from '@/lib/db/schema'
+import { candidates, jobs, schedulingProviderConfigs, schedulingTokens } from '@/lib/db/schema'
 import { getPublicAppBaseUrl } from '@/lib/public-app-url'
+import { requireCurrentUserId, requireOwnedCompanyId } from '@/lib/actions/auth-context'
 
 const TOKEN_BYTES = 24
 const TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000
@@ -28,14 +28,9 @@ function getCalcomFromConfig(config: unknown): CalcomStoredConfig | null {
 }
 
 async function getCurrentUserCompany() {
-    const supabase = await createClient()
-    const {
-        data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) throw new Error('Unauthorized')
-    const rows = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
-    if (!rows.length) throw new Error('Company not found')
-    return { companyId: rows[0].id }
+    const userId = await requireCurrentUserId()
+    const companyId = await requireOwnedCompanyId(userId)
+    return { companyId }
 }
 
 /** Active Cal.com config for a company (Settings enabled + provider calcom + username/slug). */

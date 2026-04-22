@@ -2,12 +2,10 @@ import crypto from 'crypto'
 import { and, eq, isNull, lte, or } from 'drizzle-orm'
 import { getDb } from '@/lib/db/drizzle-client'
 import {
-    candidates,
     companies,
     emailEvents,
     emailTemplates,
     integrationConfigs,
-    jobs,
     webhookEvents,
 } from '@/lib/db/schema'
 import type { CandidateStatusChangedEvent } from '@/lib/integrations/types'
@@ -366,7 +364,8 @@ export async function handleCandidateStatusChanged(event: CandidateStatusChanged
     try {
         if (event.toStatus === 'hired' && (await companyHasActiveGenericWebhook(event.companyId))) {
             const webhookEventId = await queueWebhookEvent(event)
-            await attemptWebhookDelivery(webhookEventId)
+            // Best-effort async delivery to keep status-change UX snappy.
+            void attemptWebhookDelivery(webhookEventId)
         }
     } catch (error) {
         console.error('HRIS webhook dispatch failed', error)
@@ -397,7 +396,10 @@ export async function handleCandidateStatusChanged(event: CandidateStatusChanged
         const maybeSmtp = await resolveSmtpConfig()
         if (maybeSmtp.enabled) {
             const emailEventId = await queueEmailEvent(event, interviewScheduling)
-            if (emailEventId) await attemptEmailDelivery(emailEventId)
+            if (emailEventId) {
+                // Best-effort async delivery; event remains persisted for retry flows.
+                void attemptEmailDelivery(emailEventId)
+            }
         }
     } catch (error) {
         console.error('Candidate email dispatch failed', error)

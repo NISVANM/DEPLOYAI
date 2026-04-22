@@ -1,19 +1,18 @@
 'use server'
 
-import { createClient } from '@/lib/supabase-server'
 import { companies } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { revalidatePath, unstable_noStore } from 'next/cache'
 import { getDb } from '@/lib/db/drizzle-client'
+import { getCurrentUserIdOrNull, requireCurrentUserId, requireOwnedCompanyId } from '@/lib/actions/auth-context'
 
 export async function getCompany() {
     unstable_noStore()
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return null
+        const userId = await getCurrentUserIdOrNull()
+        if (!userId) return null
 
-        const rows = await getDb().select().from(companies).where(eq(companies.ownerId, user.id)).limit(1)
+        const rows = await getDb().select().from(companies).where(eq(companies.ownerId, userId)).limit(1)
         return rows.length ? rows[0] : null
     } catch {
         return null
@@ -22,15 +21,11 @@ export async function getCompany() {
 
 export async function updateCompany(formData: { name?: string }) {
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) throw new Error('Unauthorized')
-
-        const rows = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
-        if (!rows.length) throw new Error('Company not found')
+        const userId = await requireCurrentUserId()
+        const companyId = await requireOwnedCompanyId(userId)
 
         if (formData.name === undefined) return
-        await getDb().update(companies).set({ name: formData.name }).where(eq(companies.id, rows[0].id))
+        await getDb().update(companies).set({ name: formData.name }).where(eq(companies.id, companyId))
         revalidatePath('/dashboard/settings')
     } catch (e) {
         if (e instanceof Error) throw e

@@ -1,23 +1,22 @@
 'use server'
 
-import { createClient } from '@/lib/supabase-server'
 import { jobs, candidates, companies } from '@/lib/db/schema'
 import { unstable_noStore } from 'next/cache'
 import { count, eq, and } from 'drizzle-orm'
 import { getDb } from '@/lib/db/drizzle-client'
+import { getCurrentUserIdOrNull } from '@/lib/actions/auth-context'
 
 const emptyStats = { jobsCount: 0, candidatesCount: 0, screenedCount: 0, interviewCount: 0 }
 
 export async function getDashboardStats() {
     unstable_noStore()
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return emptyStats
+        const userId = await getCurrentUserIdOrNull()
+        if (!userId) return emptyStats
 
         const userCompanies = await getDb().select({ id: companies.id })
             .from(companies)
-            .where(eq(companies.ownerId, user.id))
+            .where(eq(companies.ownerId, userId))
             .limit(1)
 
         if (!userCompanies.length) return emptyStats

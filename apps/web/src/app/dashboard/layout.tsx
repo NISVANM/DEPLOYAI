@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { unstable_noStore } from 'next/cache'
 import { DashboardNav } from '@/components/dashboard-nav'
 import { UserMenu } from '@/components/user-menu'
 import { Menu, Package2, Search } from 'lucide-react'
@@ -7,14 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 
-export const dynamic = 'force-dynamic'
-
 export default function DashboardLayout({
     children,
 }: {
     children: React.ReactNode
 }) {
-    unstable_noStore()
     return (
         <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
             <div className="hidden border-r bg-muted/40 md:block">

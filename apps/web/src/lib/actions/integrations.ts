@@ -2,10 +2,8 @@
 
 import { and, desc, eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase-server'
 import { getDb } from '@/lib/db/drizzle-client'
 import {
-    companies,
     emailEvents,
     emailTemplates,
     integrationConfigs,
@@ -16,6 +14,7 @@ import { retryPendingEmailEvents, retryPendingWebhookEvents } from '@/lib/integr
 import { isSchedulingEnabled } from '@/lib/feature-flags'
 import crypto from 'crypto'
 import { toSheetPayload } from '@/lib/integrations/dispatcher'
+import { requireCurrentUserId, requireOwnedCompanyId } from '@/lib/actions/auth-context'
 
 type WebhookConfigInput = {
     enabled: boolean
@@ -38,16 +37,9 @@ export type SchedulingConfigInput = {
 }
 
 async function getCurrentUserCompany() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Unauthorized')
-    const rows = await getDb()
-        .select({ id: companies.id })
-        .from(companies)
-        .where(eq(companies.ownerId, user.id))
-        .limit(1)
-    if (!rows.length) throw new Error('Company not found')
-    return { userId: user.id, companyId: rows[0].id }
+    const userId = await requireCurrentUserId()
+    const companyId = await requireOwnedCompanyId(userId)
+    return { userId, companyId }
 }
 
 export async function getIntegrationSettings() {

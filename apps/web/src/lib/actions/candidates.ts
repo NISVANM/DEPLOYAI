@@ -10,6 +10,7 @@ import mammoth from 'mammoth'
 import { extractTextFromPdfBuffer } from '@/lib/pdf-extract'
 import { handleCandidateStatusChanged } from '@/lib/integrations/dispatcher'
 import type { CandidateStatus } from '@/lib/integrations/types'
+import { getCurrentUserIdOrNull, requireCurrentUserId } from '@/lib/actions/auth-context'
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
@@ -20,9 +21,8 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
         throw new Error('No file uploaded')
     }
 
+    const userId = await requireCurrentUserId()
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Unauthorized')
 
     // 1. Start upload to Supabase Storage (in parallel with extraction)
     const filename = `${jobId}/${Date.now()}-${file.name}`
@@ -61,7 +61,7 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
     // 3. AI Parse & Score (Groq free tier first if key set; else Gemini)
     const [jobRows, userCompanies] = await Promise.all([
         getDb().select().from(jobs).where(eq(jobs.id, jobId)).limit(1),
-        getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1),
+        getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, userId)).limit(1),
     ])
     if (!jobRows.length) throw new Error('Job not found')
     const jobData = jobRows[0]
@@ -244,11 +244,10 @@ export async function uploadAndParseResume(jobId: string, formData: FormData) {
 export async function getAllCandidatesForCompany() {
     unstable_noStore()
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return []
+        const userId = await getCurrentUserIdOrNull()
+        if (!userId) return []
 
-        const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
+        const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, userId)).limit(1)
         if (!userCompanies.length) return []
 
         const companyId = userCompanies[0].id
@@ -270,12 +269,11 @@ export async function getAllCandidatesForCompany() {
 export async function getCandidates(jobId: string) {
     unstable_noStore()
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return []
+        const userId = await getCurrentUserIdOrNull()
+        if (!userId) return []
 
         const [userCompanies, jobRows] = await Promise.all([
-            getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1),
+            getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, userId)).limit(1),
             getDb().select({ companyId: jobs.companyId }).from(jobs).where(eq(jobs.id, jobId)).limit(1),
         ])
         if (!userCompanies.length) return []
@@ -289,11 +287,9 @@ export async function getCandidates(jobId: string) {
 }
 
 export async function updateCandidateStatus(candidateId: string, status: CandidateStatus) {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Unauthorized')
+    const userId = await requireCurrentUserId()
 
-    const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1)
+    const userCompanies = await getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, userId)).limit(1)
     if (!userCompanies.length) throw new Error('Unauthorized')
 
     const candidateRows = await getDb()
@@ -338,7 +334,7 @@ export async function updateCandidateStatus(candidateId: string, status: Candida
         jobTitle: jobRows[0]?.title ?? 'Job',
         fromStatus: previousStatus,
         toStatus: status,
-        changedByUserId: user.id,
+        changedByUserId: userId,
         changedAt: new Date(),
     })
 
@@ -349,12 +345,11 @@ export async function updateCandidateStatus(candidateId: string, status: Candida
 export async function getCandidate(candidateId: string, jobId: string) {
     unstable_noStore()
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return null
+        const userId = await getCurrentUserIdOrNull()
+        if (!userId) return null
 
         const [userCompanies, jobRows] = await Promise.all([
-            getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, user.id)).limit(1),
+            getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, userId)).limit(1),
             getDb().select().from(jobs).where(eq(jobs.id, jobId)).limit(1),
         ])
         if (!userCompanies.length) return null

@@ -1,6 +1,5 @@
 'use server'
 
-import { createClient } from '@/lib/supabase-server'
 import { jobs, companies, companyMemberships } from '@/lib/db/schema'
 import { jobSchema } from '@/lib/schemas/jobs'
 import { revalidatePath, unstable_noStore } from 'next/cache'
@@ -8,12 +7,14 @@ import { redirect } from 'next/navigation'
 import { eq, and } from 'drizzle-orm'
 import { getDb } from '@/lib/db/drizzle-client'
 import { databaseErrorHint } from '@/lib/db/error-hint'
+import {
+    getCurrentUserIdOrNull,
+    requireCurrentUserId,
+    getOwnedCompanyIdOrNull,
+} from '@/lib/actions/auth-context'
 
 export async function createJob(formData: any) {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) throw new Error('Unauthorized')
+    const userId = await requireCurrentUserId()
 
     const result = jobSchema.safeParse(formData)
     if (!result.success) return { error: result.error.flatten() }
@@ -22,7 +23,7 @@ export async function createJob(formData: any) {
         let companyId: string
         const userCompanies = await getDb().select({ id: companies.id })
             .from(companies)
-            .where(eq(companies.ownerId, user.id))
+            .where(eq(companies.ownerId, userId))
             .limit(1)
 
         if (userCompanies.length > 0) {
@@ -31,12 +32,12 @@ export async function createJob(formData: any) {
             const [newCompany] = await getDb().insert(companies).values({
                 name: 'My Company',
                 slug: `company-${Date.now()}`,
-                ownerId: user.id,
+                ownerId: userId,
             }).returning({ id: companies.id })
             companyId = newCompany.id
             await getDb().insert(companyMemberships).values({
                 companyId,
-                userId: user.id,
+                userId,
                 role: 'owner'
             })
         }
@@ -68,13 +69,12 @@ export async function createJob(formData: any) {
 export async function getJobs() {
     unstable_noStore()
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return []
+        const userId = await getCurrentUserIdOrNull()
+        if (!userId) return []
 
         const userCompanies = await getDb().select({ id: companies.id })
             .from(companies)
-            .where(eq(companies.ownerId, user.id))
+            .where(eq(companies.ownerId, userId))
             .limit(1)
 
         if (!userCompanies.length) return []
@@ -89,18 +89,13 @@ export async function getJobs() {
 export async function getJob(jobId: string) {
     unstable_noStore()
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return null
-
-        const userCompanies = await getDb().select({ id: companies.id })
-            .from(companies)
-            .where(eq(companies.ownerId, user.id))
-            .limit(1)
-        if (!userCompanies.length) return null
-
-        const companyId = userCompanies[0].id
-        const rows = await getDb().select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
+        const userId = await getCurrentUserIdOrNull()
+        if (!userId) return null
+        const [companyId, rows] = await Promise.all([
+            getOwnedCompanyIdOrNull(userId),
+            getDb().select().from(jobs).where(eq(jobs.id, jobId)).limit(1),
+        ])
+        if (!companyId) return null
         if (!rows.length || rows[0].companyId !== companyId) return null
         return rows[0]
     } catch {
@@ -109,18 +104,12 @@ export async function getJob(jobId: string) {
 }
 
 export async function deleteJob(jobId: string) {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Unauthorized')
-
-    const userCompanies = await getDb().select({ id: companies.id })
-        .from(companies)
-        .where(eq(companies.ownerId, user.id))
-        .limit(1)
-    if (!userCompanies.length) throw new Error('Unauthorized')
+    const userId = await requireCurrentUserId()
+    const companyId = await getOwnedCompanyIdOrNull(userId)
+    if (!companyId) throw new Error('Unauthorized')
 
     const rows = await getDb().select({ id: jobs.id, companyId: jobs.companyId }).from(jobs).where(eq(jobs.id, jobId)).limit(1)
-    if (!rows.length || rows[0].companyId !== userCompanies[0].id) throw new Error('Job not found or unauthorized')
+    if (!rows.length || rows[0].companyId !== companyId) throw new Error('Job not found or unauthorized')
 
     await getDb().delete(jobs).where(eq(jobs.id, jobId))
     revalidatePath('/dashboard/jobs')
