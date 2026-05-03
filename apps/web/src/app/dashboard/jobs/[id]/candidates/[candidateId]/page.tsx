@@ -3,7 +3,7 @@ import { getJob } from "@/lib/actions/jobs"
 import { isCalcomSchedulingActiveForCompany } from "@/lib/actions/scheduling"
 import { CandidateSchedulingLinkCard } from "@/components/candidate-scheduling-link"
 import { notFound } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -13,6 +13,7 @@ import { CandidateResumeDetails } from "@/components/candidate-resume-details"
 import { ArrowLeft, Download, Mail, Phone, ExternalLink } from "lucide-react"
 import Link from "next/link"
 import { decodeJobSkills } from "@/lib/job-skills"
+import type { CandidateImprovementPlan } from "@/lib/candidate-improvement-suggestions"
 
 export default async function CandidatePage({ params }: { params: Promise<{ id: string; candidateId: string }> }) {
     const { id, candidateId } = await params
@@ -29,7 +30,13 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
     const requiredSkills = ((candidate as { requiredSkills?: string[] }).requiredSkills ?? decodedSkills.requiredSkills)
     const missingRequiredSkills = ((candidate as { missingRequiredSkills?: string[] }).missingRequiredSkills ?? [])
     const isQualified = ((candidate as { isQualified?: boolean }).isQualified ?? missingRequiredSkills.length === 0)
-    const improvementSuggestions = ((candidate as { improvementSuggestions?: string[] }).improvementSuggestions ?? [])
+    const improvementPlan =
+        ((candidate as { improvementPlan?: CandidateImprovementPlan }).improvementPlan ??
+            (typeof candidate.matchAnalysis === 'object' &&
+            candidate.matchAnalysis !== null &&
+            'improvementPlan' in candidate.matchAnalysis
+                ? (candidate.matchAnalysis as { improvementPlan?: CandidateImprovementPlan }).improvementPlan
+                : undefined))
 
     return (
         <div className="flex flex-col gap-6">
@@ -106,18 +113,88 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
                                     </div>
                                 )}
                             </div>
-                            {!isQualified && (
-                                <div className="space-y-2">
-                                    <h4 className="font-semibold">Options to improve and qualify</h4>
-                                    <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                                        {improvementSuggestions.map((tip, i) => (
-                                            <li key={`${tip}-${i}`}>{tip}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
                         </CardContent>
                     </Card>
+
+                    {!isQualified && improvementPlan && (
+                        <Card className="border-destructive/25 bg-muted/30">
+                            <CardHeader>
+                                <CardTitle className="text-lg">{improvementPlan.headline}</CardTitle>
+                                <CardDescription>
+                                    Practical updates aligned with this posting — based on required skills, job text, and what already appears on the resume.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-8">
+                                <section className="space-y-2">
+                                    <h4 className="text-sm font-semibold tracking-tight">Why this profile is not qualified yet</h4>
+                                    <p className="text-sm text-muted-foreground leading-relaxed">{improvementPlan.gapSummary}</p>
+                                </section>
+
+                                {improvementPlan.perSkill.length > 0 && (
+                                    <section className="space-y-4">
+                                        <h4 className="text-sm font-semibold tracking-tight">Close each missing must-have skill</h4>
+                                        <div className="space-y-4">
+                                            {improvementPlan.perSkill.map(({ skill, bullets }) => (
+                                                <div
+                                                    key={skill}
+                                                    className="rounded-lg border bg-background p-4 shadow-xs"
+                                                >
+                                                    <div className="mb-2 flex items-center gap-2">
+                                                        <Badge variant="destructive" className="text-xs">
+                                                            Missing
+                                                        </Badge>
+                                                        <span className="font-medium text-sm">{skill}</span>
+                                                    </div>
+                                                    <ul className="list-disc list-inside space-y-1.5 text-sm text-muted-foreground">
+                                                        {bullets.map((line, i) => (
+                                                            <li key={`${skill}-${i}`} className="leading-relaxed">
+                                                                {line}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </section>
+                                )}
+
+                                <section className="space-y-2">
+                                    <h4 className="text-sm font-semibold tracking-tight">Align the narrative with this role</h4>
+                                    <ul className="list-disc list-inside space-y-1.5 text-sm text-muted-foreground">
+                                        {improvementPlan.roleAlignment.map((line, i) => (
+                                            <li key={`align-${i}`} className="leading-relaxed">
+                                                {line}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </section>
+
+                                {improvementPlan.experienceGap && improvementPlan.experienceGap.length > 0 && (
+                                    <section className="space-y-2">
+                                        <h4 className="text-sm font-semibold tracking-tight">Experience depth vs. job minimum</h4>
+                                        <ul className="list-disc list-inside space-y-1.5 text-sm text-muted-foreground">
+                                            {improvementPlan.experienceGap.map((line, i) => (
+                                                <li key={`exp-${i}`} className="leading-relaxed">
+                                                    {line}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </section>
+                                )}
+
+                                <section className="space-y-2">
+                                    <h4 className="text-sm font-semibold tracking-tight">Before you re-submit</h4>
+                                    <ul className="list-disc list-inside space-y-1.5 text-sm text-muted-foreground">
+                                        {improvementPlan.nextStepsChecklist.map((line, i) => (
+                                            <li key={`chk-${i}`} className="leading-relaxed">
+                                                {line}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </section>
+                            </CardContent>
+                        </Card>
+                    )}
 
                     <Card>
                         <CardHeader>
