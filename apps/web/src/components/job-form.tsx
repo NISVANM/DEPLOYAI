@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { createJob } from '@/lib/actions/jobs'
 import { jobFormSchema } from '@/lib/schemas/jobs'
@@ -53,6 +54,7 @@ export function JobForm() {
             description: '',
             requirements: '',
             skills: '',
+            requiredSkills: [],
             minExperience: 0,
             location: '',
             type: 'full-time',
@@ -190,6 +192,7 @@ export function JobForm() {
                     name="skills"
                     render={({ field }) => {
                         const currentSkills = parseSkillsString(Array.isArray(field.value) ? field.value.join(', ') : (field.value ?? ''))
+                        const selectedRequiredSkills = form.watch('requiredSkills') ?? []
                         const addSkill = (skill: string) => {
                             const next = toSkillsString([...currentSkills, skill])
                             field.onChange(next)
@@ -206,7 +209,12 @@ export function JobForm() {
                                     <div>
                                         <Input
                                             value={Array.isArray(field.value) ? field.value.join(', ') : field.value}
-                                            onChange={(e) => field.onChange(e.target.value)}
+                                            onChange={(e) => {
+                                                const nextSkills = parseSkillsString(e.target.value)
+                                                const nextRequired = selectedRequiredSkills.filter((required) => nextSkills.includes(required))
+                                                form.setValue('requiredSkills', nextRequired, { shouldDirty: true, shouldValidate: true })
+                                                field.onChange(e.target.value)
+                                            }}
                                             placeholder="Pick from list or type skills (comma-separated)"
                                             list={SKILLS_DATALIST_ID}
                                         />
@@ -240,6 +248,38 @@ export function JobForm() {
                                             {suggestedNotAdded.length === 0 && suggestedSkills.length > 0 && (
                                                 <span className="text-sm text-muted-foreground">All suggested skills added.</span>
                                             )}
+                                        </div>
+                                    </div>
+                                )}
+                                {currentSkills.length > 0 && (
+                                    <div className="mt-3 space-y-2">
+                                        <p className="text-sm text-muted-foreground">
+                                            Mark must-have skills (candidates missing these are marked as not qualified):
+                                        </p>
+                                        <div className="grid gap-2">
+                                            {currentSkills.map((skill) => {
+                                                const checked = selectedRequiredSkills.includes(skill)
+                                                return (
+                                                    <label
+                                                        key={skill}
+                                                        className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm"
+                                                    >
+                                                        <Checkbox
+                                                            checked={checked}
+                                                            onCheckedChange={(state) => {
+                                                                const next = new Set(selectedRequiredSkills)
+                                                                if (state) next.add(skill)
+                                                                else next.delete(skill)
+                                                                form.setValue('requiredSkills', Array.from(next), {
+                                                                    shouldDirty: true,
+                                                                    shouldValidate: true,
+                                                                })
+                                                            }}
+                                                        />
+                                                        <span>{skill}</span>
+                                                    </label>
+                                                )
+                                            })}
                                         </div>
                                     </div>
                                 )}

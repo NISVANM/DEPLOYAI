@@ -11,6 +11,7 @@ import { extractTextFromPdfBuffer } from '@/lib/pdf-extract'
 import { handleCandidateStatusChanged } from '@/lib/integrations/dispatcher'
 import type { CandidateStatus } from '@/lib/integrations/types'
 import { getCurrentUserIdOrNull, requireCurrentUserId } from '@/lib/actions/auth-context'
+import { decodeJobSkills, findMissingRequiredSkills } from '@/lib/job-skills'
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
@@ -160,6 +161,13 @@ function extractFallbackParsed(params: {
     }
 }
 
+function buildCandidateImprovementSuggestions(missingRequiredSkills: string[]): string[] {
+    if (!missingRequiredSkills.length) {
+        return ['Resume already meets required skills; strengthen project impact and role-specific achievements.']
+    }
+    return missingRequiredSkills.map((skill) => `Add evidence for "${skill}" with project/work examples in resume.`)
+}
+
 async function processSingleResume(params: {
     file: File
     jobId: string
@@ -167,6 +175,8 @@ async function processSingleResume(params: {
     supabase: Awaited<ReturnType<typeof createClient>>
 }): Promise<{ success: true } | { success: false; error: string }> {
     const { file, jobId, jobData, supabase } = params
+    const decodedJobSkills = decodeJobSkills(jobData.skills)
+    const requiredSkills = decodedJobSkills.requiredSkills
     if (!(file instanceof File) || file.size === 0) {
         return { success: false, error: 'Invalid or empty file' }
     }
@@ -219,7 +229,8 @@ async function processSingleResume(params: {
     Job Context:
     - Title: ${jobData.title}
     - Description: ${jobData.description}
-    - Required Skills: ${jobData.skills?.join(', ')}
+    - Skills: ${decodedJobSkills.allSkills.join(', ')}
+    - Must-have skills (strict): ${requiredSkills.join(', ')}
     - Min Experience: ${jobData.minExperience} years
 
     Resume Text:
@@ -345,7 +356,7 @@ async function processSingleResume(params: {
 
     let parsed: AiResume = extractFallbackParsed({
         resumeText: text,
-        requiredSkills: Array.isArray(jobData.skills) ? jobData.skills : [],
+        requiredSkills,
     })
     if (content) {
         try {
@@ -359,7 +370,7 @@ async function processSingleResume(params: {
         parsed,
         resumeText: text,
         jobTitle: jobData.title,
-        requiredSkills: Array.isArray(jobData.skills) ? jobData.skills : [],
+        requiredSkills: requiredSkills.length ? requiredSkills : decodedJobSkills.allSkills,
         minExperience: jobData.minExperience ?? 0,
     })
     const aiScore = typeof parsed.score === 'number' && Number.isFinite(parsed.score) ? clampScore(parsed.score) : null
@@ -374,13 +385,25 @@ async function processSingleResume(params: {
     const weaknessesFromAi = Array.isArray(aiMatchAnalysis?.weaknesses)
         ? aiMatchAnalysis!.weaknesses!.filter((s): s is string => typeof s === 'string').slice(0, 2)
         : []
+    const candidateSkills = Array.isArray(parsed.skills) ? parsed.skills : []
+    const missingRequiredSkills = findMissingRequiredSkills(requiredSkills, candidateSkills)
+    const isQualified = missingRequiredSkills.length === 0
+    const improvementSuggestions = buildCandidateImprovementSuggestions(missingRequiredSkills)
     const mergedAnalysis = {
         strengths: [...deterministic.strengths, ...strengthsFromAi].slice(0, 5),
-        weaknesses: [...deterministic.weaknesses, ...weaknessesFromAi].slice(0, 5),
+        weaknesses: [
+            ...deterministic.weaknesses,
+            ...(missingRequiredSkills.length ? [`Missing required skills: ${missingRequiredSkills.join(', ')}`] : []),
+            ...weaknessesFromAi,
+        ].slice(0, 6),
         reasoning:
             typeof aiMatchAnalysis?.reasoning === 'string' && aiMatchAnalysis.reasoning.trim().length > 0
                 ? `${deterministic.reasoning} ${aiMatchAnalysis.reasoning}`
                 : deterministic.reasoning,
+        requiredSkills,
+        missingRequiredSkills,
+        isQualified,
+        improvementSuggestions,
     }
     const fallbackEmailToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const fallbackEmail = `unknown+${fallbackEmailToken}@example.com`
@@ -504,14 +527,32 @@ export async function getCandidates(jobId: string) {
 
         const [userCompanies, jobRows] = await Promise.all([
             getDb().select({ id: companies.id }).from(companies).where(eq(companies.ownerId, userId)).limit(1),
-            getDb().select({ companyId: jobs.companyId }).from(jobs).where(eq(jobs.id, jobId)).limit(1),
+            getDb().select({ companyId: jobs.companyId, skills: jobs.skills }).from(jobs).where(eq(jobs.id, jobId)).limit(1),
         ])
         if (!userCompanies.length) return []
 
         if (!jobRows.length || jobRows[0].companyId !== userCompanies[0].id) return []
 
+        const requiredSkills = decodeJobSkills(jobRows[0].skills).requiredSkills
         const rows = await getDb().select().from(candidates).where(eq(candidates.jobId, jobId))
-        return rows.sort((a, b) => {
+        const enriched = rows.map((candidate) => {
+            const missingRequiredSkills = findMissingRequiredSkills(requiredSkills, candidate.skills)
+            const existingAnalysis =
+                candidate.matchAnalysis && typeof candidate.matchAnalysis === 'object'
+                    ? (candidate.matchAnalysis as Record<string, unknown>)
+                    : {}
+            return {
+                ...candidate,
+                isQualified: missingRequiredSkills.length === 0,
+                missingRequiredSkills,
+                improvementSuggestions:
+                    Array.isArray(existingAnalysis.improvementSuggestions)
+                        ? existingAnalysis.improvementSuggestions
+                        : buildCandidateImprovementSuggestions(missingRequiredSkills),
+            }
+        })
+        return enriched.sort((a, b) => {
+            if (a.isQualified !== b.isQualified) return a.isQualified ? -1 : 1
             const scoreA = typeof a.score === 'number' ? a.score : -1
             const scoreB = typeof b.score === 'number' ? b.score : -1
             return scoreB - scoreA
@@ -593,7 +634,23 @@ export async function getCandidate(candidateId: string, jobId: string) {
 
         const candidateRows = await getDb().select().from(candidates).where(and(eq(candidates.id, candidateId), eq(candidates.jobId, jobId))).limit(1)
         if (!candidateRows.length) return null
-        return candidateRows[0]
+        const candidate = candidateRows[0]
+        const requiredSkills = decodeJobSkills(jobRows[0].skills).requiredSkills
+        const missingRequiredSkills = findMissingRequiredSkills(requiredSkills, candidate.skills)
+        const existingAnalysis =
+            candidate.matchAnalysis && typeof candidate.matchAnalysis === 'object'
+                ? (candidate.matchAnalysis as Record<string, unknown>)
+                : {}
+        return {
+            ...candidate,
+            requiredSkills,
+            missingRequiredSkills,
+            isQualified: missingRequiredSkills.length === 0,
+            improvementSuggestions:
+                Array.isArray(existingAnalysis.improvementSuggestions)
+                    ? existingAnalysis.improvementSuggestions
+                    : buildCandidateImprovementSuggestions(missingRequiredSkills),
+        }
     } catch {
         return null
     }

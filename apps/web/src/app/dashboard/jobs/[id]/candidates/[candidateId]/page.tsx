@@ -12,6 +12,7 @@ import { CandidateStatusActions } from "@/components/candidate-status-actions"
 import { CandidateResumeDetails } from "@/components/candidate-resume-details"
 import { ArrowLeft, Download, Mail, Phone, ExternalLink } from "lucide-react"
 import Link from "next/link"
+import { decodeJobSkills } from "@/lib/job-skills"
 
 export default async function CandidatePage({ params }: { params: Promise<{ id: string; candidateId: string }> }) {
     const { id, candidateId } = await params
@@ -24,6 +25,11 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
     if (!candidate) notFound()
 
     const schedulingActive = await isCalcomSchedulingActiveForCompany(job.companyId)
+    const decodedSkills = decodeJobSkills(job.skills)
+    const requiredSkills = ((candidate as { requiredSkills?: string[] }).requiredSkills ?? decodedSkills.requiredSkills)
+    const missingRequiredSkills = ((candidate as { missingRequiredSkills?: string[] }).missingRequiredSkills ?? [])
+    const isQualified = ((candidate as { isQualified?: boolean }).isQualified ?? missingRequiredSkills.length === 0)
+    const improvementSuggestions = ((candidate as { improvementSuggestions?: string[] }).improvementSuggestions ?? [])
 
     return (
         <div className="flex flex-col gap-6">
@@ -81,6 +87,35 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
                                 <h4 className="font-semibold mb-2">Reasoning</h4>
                                 <p className="text-sm text-muted-foreground">{(candidate.matchAnalysis as any)?.reasoning}</p>
                             </div>
+
+                            <div className="space-y-2">
+                                <h4 className="font-semibold">Qualification Status</h4>
+                                <Badge variant={isQualified ? "default" : "destructive"}>
+                                    {isQualified ? "Qualified" : "Not Qualified"}
+                                </Badge>
+                                {requiredSkills.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 pt-1">
+                                        {requiredSkills.map((skill) => (
+                                            <Badge
+                                                key={skill}
+                                                variant={missingRequiredSkills.includes(skill) ? "destructive" : "secondary"}
+                                            >
+                                                {skill}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            {!isQualified && (
+                                <div className="space-y-2">
+                                    <h4 className="font-semibold">Options to improve and qualify</h4>
+                                    <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                                        {improvementSuggestions.map((tip, i) => (
+                                            <li key={`${tip}-${i}`}>{tip}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 

@@ -7,6 +7,7 @@ import { notFound } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { decodeJobSkills } from "@/lib/job-skills"
 
 export default async function JobDetailsPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
@@ -15,6 +16,15 @@ export default async function JobDetailsPage({ params }: { params: Promise<{ id:
         getCandidates(id),
     ])
     if (!jobData) notFound()
+    const decodedSkills = decodeJobSkills(jobData.skills)
+    const qualifiedCandidates = candidates.filter((candidate) => {
+        const c = candidate as typeof candidate & { isQualified?: boolean }
+        return c.isQualified !== false
+    })
+    const notQualifiedCandidates = candidates.filter((candidate) => {
+        const c = candidate as typeof candidate & { isQualified?: boolean }
+        return c.isQualified === false
+    })
 
     return (
         <div className="flex flex-col gap-6">
@@ -38,7 +48,28 @@ export default async function JobDetailsPage({ params }: { params: Promise<{ id:
                             <TabsTrigger value="details">Job Details</TabsTrigger>
                         </TabsList>
                         <TabsContent value="candidates" className="space-y-4">
-                            <CandidatesTable jobId={jobData.id} candidates={candidates} />
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Qualified Candidates ({qualifiedCandidates.length})</CardTitle>
+                                    <CardDescription>
+                                        Candidates matching all must-have skills, ranked by match score.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <CandidatesTable jobId={jobData.id} candidates={qualifiedCandidates} showRank />
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Not Qualified Candidates ({notQualifiedCandidates.length})</CardTitle>
+                                    <CardDescription>
+                                        Missing must-have skills are shown for each candidate.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <CandidatesTable jobId={jobData.id} candidates={notQualifiedCandidates} showRank={false} />
+                                </CardContent>
+                            </Card>
                         </TabsContent>
                         <TabsContent value="upload">
                             <Card>
@@ -66,8 +97,14 @@ export default async function JobDetailsPage({ params }: { params: Promise<{ id:
 
                                     <h3 className="font-semibold">Skills</h3>
                                     <div className="flex flex-wrap gap-2">
-                                        {jobData.skills?.map(skill => (
-                                            <Badge key={skill} variant="secondary">{skill}</Badge>
+                                        {decodedSkills.allSkills.map(skill => (
+                                            <Badge
+                                                key={skill}
+                                                variant={decodedSkills.requiredSkills.includes(skill) ? "default" : "secondary"}
+                                            >
+                                                {skill}
+                                                {decodedSkills.requiredSkills.includes(skill) ? " (Required)" : ""}
+                                            </Badge>
                                         ))}
                                     </div>
                                 </CardContent>

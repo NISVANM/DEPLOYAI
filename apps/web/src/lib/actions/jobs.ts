@@ -7,6 +7,7 @@ import { redirect } from 'next/navigation'
 import { eq, and } from 'drizzle-orm'
 import { getDb } from '@/lib/db/drizzle-client'
 import { databaseErrorHint } from '@/lib/db/error-hint'
+import { encodeJobSkills } from '@/lib/job-skills'
 import {
     getCurrentUserIdOrNull,
     requireCurrentUserId,
@@ -47,7 +48,7 @@ export async function createJob(formData: any) {
             title: result.data.title,
             description: result.data.description,
             requirements: result.data.requirements,
-            skills: result.data.skills,
+            skills: encodeJobSkills(result.data.skills, result.data.requiredSkills),
             minExperience: result.data.minExperience,
             location: result.data.location,
             type: result.data.type,

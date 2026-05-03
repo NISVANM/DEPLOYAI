@@ -4,6 +4,7 @@ import { getJobs } from "@/lib/actions/jobs"
 import { DeleteJobButton } from "@/components/delete-job-button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { decodeJobSkills } from "@/lib/job-skills"
 
 export default async function JobsPage() {
     const jobs = await getJobs()
@@ -33,7 +34,9 @@ export default async function JobsPage() {
                 </div>
             ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {jobs.map((job) => (
+                    {jobs.map((job) => {
+                        const decodedSkills = decodeJobSkills(job.skills)
+                        return (
                         <Card key={job.id}>
                             <CardHeader>
                                 <div className="flex justify-between items-start gap-2">
@@ -48,11 +51,17 @@ export default async function JobsPage() {
                             <CardContent>
                                 <p className="line-clamp-3 text-sm text-muted-foreground">{job.description}</p>
                                 <div className="mt-4 flex flex-wrap gap-2">
-                                    {job.skills?.slice(0, 3).map((skill: string) => (
-                                        <Badge key={skill} variant="outline" className="text-xs">{skill}</Badge>
+                                    {decodedSkills.allSkills.slice(0, 3).map((skill: string) => (
+                                        <Badge
+                                            key={skill}
+                                            variant={decodedSkills.requiredSkills.includes(skill) ? "default" : "outline"}
+                                            className="text-xs"
+                                        >
+                                            {skill}
+                                        </Badge>
                                     ))}
-                                    {job.skills && job.skills.length > 3 && (
-                                        <Badge variant="outline" className="text-xs">+{job.skills.length - 3}</Badge>
+                                    {decodedSkills.allSkills.length > 3 && (
+                                        <Badge variant="outline" className="text-xs">+{decodedSkills.allSkills.length - 3}</Badge>
                                     )}
                                 </div>
                             </CardContent>
@@ -62,7 +71,7 @@ export default async function JobsPage() {
                                 </Button>
                             </CardFooter>
                         </Card>
-                    ))}
+                    )})}
                 </div>
             )}
         </div>

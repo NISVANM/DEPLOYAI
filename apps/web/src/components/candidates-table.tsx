@@ -37,9 +37,18 @@ interface Candidate {
     createdAt: Date
     skills: string[] | null
     resumeUrl?: string | null
+    missingRequiredSkills?: string[]
 }
 
-export function CandidatesTable({ jobId, candidates }: { jobId: string; candidates: Candidate[] }) {
+export function CandidatesTable({
+    jobId,
+    candidates,
+    showRank = true,
+}: {
+    jobId: string
+    candidates: Candidate[]
+    showRank?: boolean
+}) {
     const router = useRouter()
 
     async function handleStatusChange(candidateId: string, status: CandidateStatus) {
@@ -64,10 +73,11 @@ export function CandidatesTable({ jobId, candidates }: { jobId: string; candidat
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>Rank</TableHead>
+                        {showRank ? <TableHead>Rank</TableHead> : null}
                         <TableHead>Candidate</TableHead>
                         <TableHead>Match Score</TableHead>
                         <TableHead>Skills Match</TableHead>
+                        <TableHead>Missing Skills</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Applied</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
@@ -76,7 +86,7 @@ export function CandidatesTable({ jobId, candidates }: { jobId: string; candidat
                 <TableBody>
                     {candidates.map((candidate, index) => (
                         <TableRow key={candidate.id}>
-                            <TableCell className="font-medium">#{index + 1}</TableCell>
+                            {showRank ? <TableCell className="font-medium">#{index + 1}</TableCell> : null}
                             <TableCell>
                                 <Link href={`/dashboard/jobs/${jobId}/candidates/${candidate.id}`} className="flex flex-col hover:underline">
                                     <span className="font-medium">{candidate.name}</span>
@@ -104,6 +114,26 @@ export function CandidatesTable({ jobId, candidates }: { jobId: string; candidat
                                     ))}
                                     {(candidate.skills?.length ?? 0) > 2 && (
                                         <Badge variant="outline" className="text-[10px]">+{(candidate.skills?.length ?? 0) - 2}</Badge>
+                                    )}
+                                </div>
+                            </TableCell>
+                            <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                    {(candidate.missingRequiredSkills ?? []).length > 0 ? (
+                                        <>
+                                            {candidate.missingRequiredSkills?.slice(0, 2).map((skill) => (
+                                                <Badge key={skill} variant="outline" className="text-[10px] border-red-300 text-red-700">
+                                                    {skill}
+                                                </Badge>
+                                            ))}
+                                            {(candidate.missingRequiredSkills?.length ?? 0) > 2 && (
+                                                <Badge variant="outline" className="text-[10px]">
+                                                    +{(candidate.missingRequiredSkills?.length ?? 0) - 2}
+                                                </Badge>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <Badge variant="secondary" className="text-[10px]">None</Badge>
                                     )}
                                 </div>
                             </TableCell>
@@ -161,7 +191,7 @@ export function CandidatesTable({ jobId, candidates }: { jobId: string; candidat
                     ))}
                     {candidates.length === 0 && (
                         <TableRow>
-                            <TableCell colSpan={7} className="h-24 text-center">
+                            <TableCell colSpan={showRank ? 8 : 7} className="h-24 text-center">
                                 No candidates found. Upload resumes to get started.
                             </TableCell>
                         </TableRow>
